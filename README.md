@@ -1,4 +1,4 @@
-# Ledger — Phases 1, 2 and invoice capture
+# Ledger — Phases 1, 2, invoice capture and banking
 
 A double-entry accounting system on Next.js 14, Supabase and Vercel.
 
@@ -11,7 +11,12 @@ notes, receipts, payments, allocation, statements and aged analysis.
 Invoice capture sits on top of phase 2: upload a PDF or a photo, it gets
 read, you check it, and it posts as a bill with the original attached.
 
-Banking, VAT returns and the year-end close are phase 3.
+Banking is built: bank accounts, statement import from CSV or Excel,
+matching rules and reconciliation. Bank feeds are not — but a feed will
+write to the same table the import does, so nothing else changes when
+they arrive.
+
+VAT returns and the year-end close are what remain.
 
 **The checkpoint:** raise an invoice, record a part payment against it, then
 open aged debtors and the trial balance side by side. The aged debtors total
@@ -40,6 +45,7 @@ supabase/migrations/0009_trading_posting.sql
 supabase/migrations/0010_trading_rls.sql
 supabase/migrations/0011_fiscal_year.sql
 supabase/migrations/0012_capture.sql
+supabase/migrations/0013_banking.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -93,9 +99,10 @@ for f in supabase/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -d ledgertest -f 
 psql -d ledgertest -f supabase/test/01_ledger_test.sql
 psql -d ledgertest -f supabase/test/02_trading_test.sql
 psql -d ledgertest -f supabase/test/03_capture_test.sql
+psql -d ledgertest -f supabase/test/04_banking_test.sql
 ```
 
-Seventy assertions across the three files. Each is independent — they can
+Ninety-nine assertions across the four files. Each is independent — they can
 be run in any order, repeatedly, against the same database.
 
 `01_ledger_test.sql` covers chart of accounts seeding, period generation,
@@ -116,7 +123,14 @@ invoice number and amount-within-a-week, the arithmetic validation
 catching a header that disagrees with its lines, and the approval path
 posting to the ledger with the original file attached.
 
-The RLS migrations (`0006`, `0010`, `0012`) are safe to re-run: they clear
+`04_banking_test.sql` covers statement import, duplicate detection on
+overlapping re-imports, matching against transactions already in the
+ledger, VAT being taken out of a gross bank figure rather than added to
+it, rules being remembered and reused, transfers, settling a bill from
+the bank, unmatching, and the reconciliation figures agreeing with the
+nominal.
+
+The RLS migrations (`0006`, `0010`, `0012`, `0013`) are safe to re-run: they clear
 their own policies first, because `CREATE POLICY` has no `IF NOT EXISTS`
 and a migration that fails partway otherwise cannot be retried. The
 table-creation migrations are run-once.
@@ -198,7 +212,10 @@ With it on, it looks like a ledger. Same data, same tables.
 | Invoice PDFs (outbound) | Phase 2b |
 | Email-in for capture | Phase 2b |
 | Quotes and purchase orders | Phase 2b |
-| Banking, import, reconciliation | Phase 3 |
+| Bank accounts, opening balances | Built |
+| Statement import from CSV and Excel, with column mapping | Built |
+| Matching, rules, transfers, reconciliation | Built |
+| Bank feeds (Open Banking) | Later |
 | VAT return calculation | Phase 3 |
 | P&L, balance sheet, year-end close | Phase 3 |
 | Stock, fixed assets, recurring, departments | Phase 4 |
@@ -288,6 +305,73 @@ contractor and the VAT box is often blank by design.
 A stub tells you nothing about any of that. It is worth running fifty real
 invoices through a real model and counting the corrections before deciding
 this saves time on your particular post.
+
+
+## Banking
+
+### A statement line is not a transaction
+
+It is *evidence* that a transaction happened. Those are different things,
+and conflating them is how bank imports corrupt a ledger.
+
+So `statement_line` is imported data sitting outside the ledger. Each line
+ends in one of three states: matched to a journal line, excluded with a
+reason, or still waiting for a decision. Reconciling stamps
+`reconciled_at` on the journal line through `set_line_reconciled()`; the
+transaction itself stays immutable, exactly as in phase 1.
+
+This is also why bank feeds will be a small piece of work rather than a
+rewrite. A feed writes to `statement_line` and everything downstream is
+already built.
+
+### Matching, in order of trustworthiness
+
+1. **Something already in the ledger** — same amount, same bank account,
+   within a fortnight, not yet reconciled. Confidence tails off with date
+   distance because bank dates and posting dates drift. This is the
+   suggestion that stops a bank import duplicating what the sales and
+   purchase ledgers already recorded, which is the single most common way
+   bank imports go wrong.
+2. **An unpaid invoice or bill** for exactly this amount. Settles and
+   allocates in one action. The score is raised when the contact's name
+   appears in the bank description.
+3. **A saved rule** matching the description.
+
+Rules stay suggestions unless someone explicitly sets `auto_apply`. Each
+use increments a hit count so the useful ones sort to the top.
+
+### VAT comes out of the gross
+
+A bank figure is gross. Coding £1,200 to rent at 20% gives £1,000 net and
+£200 VAT — not £1,200 plus £240. Getting this the wrong way round is the
+classic bank-coding error and the test asserts it explicitly.
+
+### Reading statement files
+
+There is no standard for UK bank statement CSVs. Barclays, HSBC, Lloyds,
+NatWest, Monzo, Starling and Tide differ on column names, on column order,
+on whether amounts are one signed column or two, on date format, and on
+whether there is a preamble above the header row.
+
+So `lib/statement.js` guesses the layout, and the interface shows the
+guess for confirmation. It never applies it silently, because being wrong
+about which column is the amount — or reading 04/03 as 3 April — is not
+recoverable once posted. The preview shows real parsed dates and signed
+amounts before anything is written, and the mapping is remembered per
+account for next time.
+
+Handled: single signed amount columns, separate money-in/money-out
+columns, bracketed negatives, currency symbols and thousands separators,
+Excel serial dates, two-digit years, and a header row that is not the
+first row. Rows that cannot be read are reported rather than dropped.
+
+### Re-importing is safe
+
+Every line carries a fingerprint of account, date, amount and normalised
+description. Overlapping date ranges are recognised and skipped, and an
+import consisting entirely of duplicates does not leave an empty statement
+behind. Two genuinely identical direct debits on different dates are
+correctly kept as two lines.
 
 ## The settlement layer
 

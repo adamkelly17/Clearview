@@ -743,3 +743,19 @@ a:hover { text-decoration: underline; }
 }
 
 .confidence-fill { display: block; height: 100%; border-radius: 2px; }
+
+/* --- Bank reconciliation suggestions ------------------------------- */
+
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 0.9375rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+@media (max-width: 620px) {
+  .suggestion { flex-direction: column; align-items: stretch; gap: 0.625rem; }
+}

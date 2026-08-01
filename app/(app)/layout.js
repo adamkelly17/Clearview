@@ -30,6 +30,9 @@ export default async function AppLayout({ children }) {
           <NavLink href="/bills">Bills</NavLink>
           <NavLink href="/money/payment">Money paid out</NavLink>
 
+          <div className="nav-section">Banking</div>
+          <NavLink href="/banking">Bank accounts</NavLink>
+
           <div className="nav-section">Reports</div>
           <NavLink href="/reports/trial-balance">Trial balance</NavLink>
           <NavLink href="/reports/aged-debtors">Aged debtors</NavLink>
