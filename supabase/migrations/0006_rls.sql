@@ -12,6 +12,34 @@
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
+-- Safe to re-run
+--
+-- CREATE POLICY has no IF NOT EXISTS, so a migration that fails partway
+-- cannot simply be run again. This block clears anything this file
+-- created previously, which makes the whole migration idempotent.
+-- ---------------------------------------------------------------------
+
+do $$
+declare r record;
+begin
+  for r in
+    select tablename, policyname
+      from pg_policies
+     where schemaname = 'public'
+       and tablename in (
+         'entity_type', 'currency', 'account_type', 'organisation',
+         'organisation_user', 'organisation_feature', 'account',
+         'fiscal_year', 'period', 'vat_code', 'number_sequence',
+         'journal', 'journal_line', 'audit_log')
+  loop
+    execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
+  end loop;
+end;
+$$;
+
+drop trigger if exists account_protect_system on account;
+
+-- ---------------------------------------------------------------------
 -- Reference data
 -- ---------------------------------------------------------------------
 

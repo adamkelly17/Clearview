@@ -35,6 +35,7 @@ supabase/migrations/0007_contacts.sql
 supabase/migrations/0008_trading.sql
 supabase/migrations/0009_trading_posting.sql
 supabase/migrations/0010_trading_rls.sql
+supabase/migrations/0011_fiscal_year.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`

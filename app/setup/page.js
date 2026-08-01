@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { MONTHS, daysInMonth, readableError, shortDate } from '@/lib/format';
+import {
+  suggestFirstYearEnd,
+  toISO,
+  monthsBetween,
+  periodCount,
+  hasStubPeriod,
+} from '@/lib/fiscal';
 
 /* ---------------------------------------------------------------------
    Every question here is one the software genuinely cannot answer for
@@ -58,6 +65,7 @@ export default function SetupPage() {
     year_end_day: 31,
     year_end_month: 3,
     books_start_date: `${now.getFullYear()}-04-01`,
+    first_year_end_date: '',
 
     vat_enabled: false,
     vat_scheme: 'standard',
@@ -88,21 +96,33 @@ export default function SetupPage() {
 
   const isCompany = form.entity_type_code === 'limited_company' || form.entity_type_code === 'llp';
 
-  /* Year end day/month -> the first year the books will cover. */
-  const firstYearEnd = useMemo(() => {
-    const start = new Date(form.books_start_date);
-    if (Number.isNaN(start.getTime())) return null;
-    let end = new Date(
-      Date.UTC(start.getUTCFullYear(), form.year_end_month - 1,
-        Math.min(form.year_end_day, daysInMonth(form.year_end_month)))
-    );
-    if (end < start) end = new Date(Date.UTC(end.getUTCFullYear() + 1, end.getUTCMonth(), end.getUTCDate()));
-    return end;
-  }, [form.books_start_date, form.year_end_day, form.year_end_month]);
+  /* The suggested first year end. A newly incorporated company and a
+     business migrating mid-year can give identical inputs and mean
+     different things, so this is a starting point, not a rule. */
+  const suggestedEnd = useMemo(
+    () => toISO(suggestFirstYearEnd(form.books_start_date, form.year_end_day, form.year_end_month)),
+    [form.books_start_date, form.year_end_day, form.year_end_month]
+  );
+
+  const firstYearEnd = form.first_year_end_date || suggestedEnd;
+  const overridden = Boolean(form.first_year_end_date) && form.first_year_end_date !== suggestedEnd;
+  const yearMonths = monthsBetween(form.books_start_date, firstYearEnd);
+  const periods = periodCount(form.books_start_date, firstYearEnd);
+  const stub = hasStubPeriod(form.books_start_date);
+
+  const yearTooLong = yearMonths != null && yearMonths > 18.5;
+  const yearBackwards = Boolean(firstYearEnd) && firstYearEnd <= form.books_start_date;
 
   const canContinue = () => {
     if (step === 0) return form.name.trim().length > 1 && form.entity_type_code;
-    if (step === 1) return Boolean(form.books_start_date) && Boolean(firstYearEnd);
+    if (step === 1) {
+      return (
+        Boolean(form.books_start_date) &&
+        Boolean(firstYearEnd) &&
+        !yearTooLong &&
+        !yearBackwards
+      );
+    }
     return true;
   };
 
@@ -113,6 +133,7 @@ export default function SetupPage() {
     const supabase = createClient();
     const payload = {
       ...form,
+      first_year_end_date: firstYearEnd,
       flat_rate_percent: form.vat_scheme === 'flat_rate' ? form.flat_rate_percent || null : null,
       vat_registered_from: form.vat_registered_from || null,
       stock_control_enabled: form.holds_stock ? form.stock_control_enabled : false,
@@ -250,14 +271,59 @@ export default function SetupPage() {
               </span>
             </label>
 
-            {firstYearEnd && (
-              <div className="notice notice-info">
-                Your first year in Ledger will run from{' '}
-                <strong>{shortDate(form.books_start_date)}</strong> to{' '}
-                <strong>{shortDate(firstYearEnd)}</strong>, split into monthly
-                periods.
+            <label className="field">
+              <span className="label">Your first year ends</span>
+              <div className="row" style={{ gap: '0.625rem' }}>
+                <input
+                  className="input"
+                  type="date"
+                  style={{ width: 'auto' }}
+                  value={firstYearEnd}
+                  onChange={(e) => set({ first_year_end_date: e.target.value })}
+                />
+                {overridden && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => set({ first_year_end_date: '' })}
+                  >
+                    Use suggested
+                  </button>
+                )}
               </div>
-            )}
+              <span className="hint" style={{ display: 'block', marginTop: '0.375rem' }}>
+                {isCompany
+                  ? 'A first period is often longer than a year. Companies House sets it to the end of the month your first anniversary falls in, and allows up to eighteen months.'
+                  : 'Only the first year can be an odd length. Every year after this one runs to the date above.'}
+              </span>
+            </label>
+
+            {yearBackwards ? (
+              <div className="notice notice-error">
+                The year end has to be after the day your books start.
+              </div>
+            ) : yearTooLong ? (
+              <div className="notice notice-error">
+                That is about {yearMonths} months. A financial year cannot run
+                for longer than eighteen months, so this needs shortening.
+              </div>
+            ) : firstYearEnd ? (
+              <div className="notice notice-info">
+                Your first year runs from{' '}
+                <strong>{shortDate(form.books_start_date)}</strong> to{' '}
+                <strong>{shortDate(firstYearEnd)}</strong> — about{' '}
+                <strong>{yearMonths} months</strong>, split into {periods}{' '}
+                periods.
+                {stub && (
+                  <>
+                    {' '}
+                    The first one is a part month, which keeps the stub before
+                    you started trading separate from the full months after it.
+                  </>
+                )}
+                {' '}Later years will run to {form.year_end_day}{' '}
+                {MONTHS[form.year_end_month - 1]}.
+              </div>
+            ) : null}
           </>
         )}
 
@@ -491,7 +557,7 @@ export default function SetupPage() {
                   <tr className="no-hover"><td className="muted">Business</td><td><strong>{form.name}</strong></td></tr>
                   <tr className="no-hover"><td className="muted">Type</td><td>{ENTITY_TYPES.find((t) => t.code === form.entity_type_code)?.title}</td></tr>
                   <tr className="no-hover"><td className="muted">Year end</td><td>{form.year_end_day} {MONTHS[form.year_end_month - 1]}</td></tr>
-                  <tr className="no-hover"><td className="muted">First year</td><td>{shortDate(form.books_start_date)} to {firstYearEnd ? shortDate(firstYearEnd) : ''}</td></tr>
+                  <tr className="no-hover"><td className="muted">First year</td><td>{shortDate(form.books_start_date)} to {firstYearEnd ? shortDate(firstYearEnd) : ''} <span className="muted">({periods} periods)</span></td></tr>
                   <tr className="no-hover"><td className="muted">VAT</td><td>{form.vat_enabled ? `Registered, ${VAT_SCHEMES.find((s) => s.code === form.vat_scheme)?.title.toLowerCase()} scheme` : 'Not registered'}</td></tr>
                   <tr className="no-hover"><td className="muted">Stock</td><td>{form.holds_stock ? (form.stock_control_enabled ? 'Held and tracked' : 'Held, counted by hand') : 'None'}</td></tr>
                   <tr className="no-hover"><td className="muted">Currency</td><td>{form.base_currency_code}{form.multicurrency_enabled ? ', others allowed' : ''}</td></tr>
@@ -500,8 +566,8 @@ export default function SetupPage() {
             </div>
 
             <p className="hint mt-md">
-              Setting up creates your chart of accounts, your VAT codes and
-              twelve monthly periods for the first year.
+              Setting up creates your chart of accounts, your VAT codes and{' '}
+              {periods} monthly periods for the first year.
             </p>
           </>
         )}

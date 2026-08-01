@@ -15,6 +15,25 @@
 -- can be edited and deleted freely.
 -- =====================================================================
 
+-- Safe to re-run: clear anything this file created previously.
+do $$
+declare r record;
+begin
+  for r in
+    select tablename, policyname
+      from pg_policies
+     where schemaname = 'public'
+       and tablename in (
+         'contact', 'contact_address', 'document', 'document_line',
+         'ledger_item', 'allocation')
+  loop
+    execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
+  end loop;
+end;
+$$;
+
+drop trigger if exists document_posted_immutable on document;
+
 alter table contact         enable row level security;
 alter table contact_address enable row level security;
 alter table document        enable row level security;
