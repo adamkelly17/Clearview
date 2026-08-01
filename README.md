@@ -1,4 +1,4 @@
-# Ledger — Phases 1 and 2
+# Ledger — Phases 1, 2 and invoice capture
 
 A double-entry accounting system on Next.js 14, Supabase and Vercel.
 
@@ -7,6 +7,9 @@ manual transactions, trial balance.
 
 Phase 2 is the trading layer: customers, suppliers, invoices, bills, credit
 notes, receipts, payments, allocation, statements and aged analysis.
+
+Invoice capture sits on top of phase 2: upload a PDF or a photo, it gets
+read, you check it, and it posts as a bill with the original attached.
 
 Banking, VAT returns and the year-end close are phase 3.
 
@@ -36,6 +39,7 @@ supabase/migrations/0008_trading.sql
 supabase/migrations/0009_trading_posting.sql
 supabase/migrations/0010_trading_rls.sql
 supabase/migrations/0011_fiscal_year.sql
+supabase/migrations/0012_capture.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -88,9 +92,11 @@ psql -d ledgertest -f supabase/test/00_stub_supabase.sql
 for f in supabase/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -d ledgertest -f "$f"; done
 psql -d ledgertest -f supabase/test/01_ledger_test.sql
 psql -d ledgertest -f supabase/test/02_trading_test.sql
+psql -d ledgertest -f supabase/test/03_capture_test.sql
 ```
 
-Forty-five assertions across the two files.
+Seventy assertions across the three files. Each is independent — they can
+be run in any order, repeatedly, against the same database.
 
 `01_ledger_test.sql` covers chart of accounts seeding, period generation,
 balance enforcement, control account protection, period locking,
@@ -103,6 +109,17 @@ charge, credit notes, automatic allocation oldest-first, part payment,
 over-allocation refusal, cross-contact allocation refusal, statements, aged
 analysis, and — the important one — that the trade debtors and trade
 creditors control accounts agree exactly with their sub-ledgers.
+
+`03_capture_test.sql` covers supplier matching by VAT number, exact name
+and fuzzy name, nominal coding from history, duplicate detection on both
+invoice number and amount-within-a-week, the arithmetic validation
+catching a header that disagrees with its lines, and the approval path
+posting to the ledger with the original file attached.
+
+The RLS migrations (`0006`, `0010`, `0012`) are safe to re-run: they clear
+their own policies first, because `CREATE POLICY` has no `IF NOT EXISTS`
+and a migration that fails partway otherwise cannot be retried. The
+table-creation migrations are run-once.
 
 Do not run `00_stub_supabase.sql` against a real Supabase project.
 
@@ -176,13 +193,101 @@ With it on, it looks like a ledger. Same data, same tables.
 | Customer statements | Built |
 | Aged debtors and aged creditors | Built |
 | CIS domestic reverse charge | Built |
-| Invoice PDFs | Phase 2b |
+| Invoice capture — upload, read, review, post | Built |
+| Supplier matching, duplicate detection, nominal suggestion | Built |
+| Invoice PDFs (outbound) | Phase 2b |
+| Email-in for capture | Phase 2b |
 | Quotes and purchase orders | Phase 2b |
 | Banking, import, reconciliation | Phase 3 |
 | VAT return calculation | Phase 3 |
 | P&L, balance sheet, year-end close | Phase 3 |
 | Stock, fixed assets, recurring, departments | Phase 4 |
 | MTD submission, live bank feeds | Later |
+
+
+## Invoice capture
+
+Upload a PDF or a photo of a supplier invoice. It goes to Supabase Storage,
+a server route reads it, and you get a review screen with the original on
+one side and editable fields on the other. Approving calls
+`post_document()` with what you confirmed.
+
+### The rule that shapes everything else
+
+**Extraction produces a draft, never a posting.** A model that misreads a
+VAT figure and posts straight to the ledger produces a wrong VAT return,
+and afterwards there is no way to tell whether a figure was read or
+checked. So nothing in the capture tables touches the ledger.
+`approve_capture()` is the only route through, and it posts what a human
+confirmed on screen.
+
+The original file stays attached to the posted bill, because HMRC expects
+the paperwork behind any entry to be producible.
+
+### What makes it worth using rather than just OCR
+
+- **Supplier matching** on VAT number first, then exact name, then fuzzy
+  name via `pg_trgm`. Names are inconsistent; VAT numbers are not. A fuzzy
+  match is shown as a suggestion to confirm, never applied silently.
+- **Duplicate detection** on the same supplier plus invoice number, or the
+  same supplier, total and a date within a week. Duplicate purchase
+  invoices are among the most common real errors in a purchase ledger, and
+  capture makes them easier to create.
+- **Nominal coding from history.** If this supplier's last several bills
+  went to 7501, that is suggested. This is the part that turns capture
+  from data entry into time actually saved.
+- **Arithmetic validation.** Net plus VAT against the stated total, and the
+  lines against the header. It reports rather than corrects — a silent fix
+  would hide the very thing worth looking at.
+- **Confidence shown only where it is low.** A row of green ticks trains
+  people to stop looking. A marker on the two shaky fields sends the eye
+  where it should go.
+
+### The stub provider
+
+`EXTRACTION_PROVIDER=stub` is the default and reads nothing. It returns one
+of six hand-written fixtures so the whole flow can be exercised before any
+API account exists and before any document leaves your infrastructure.
+
+Name a file to pick a case: `clean`, `mixed` (two VAT rates), `reverse`
+(CIS domestic reverse charge), `broken` (lines that do not sum to the
+header), `sparse` (a photographed receipt with no line detail) or
+`unknown` (a supplier not on file). Otherwise the fixture is chosen from a
+hash of the filename, so the same file always gives the same result.
+
+`broken` is the one that matters most. You cannot make a real model
+misread something on demand, but you need to know what the review screen
+does when extraction is wrong — that is the case the whole design exists
+to catch.
+
+### Switching to a real model
+
+Set `EXTRACTION_PROVIDER=claude` and `ANTHROPIC_API_KEY`. The interface in
+`lib/extraction/` is one function with one return shape, so moving to
+Textract, Document AI or Mindee means writing one file and changing one
+variable. Nothing downstream knows which one read the document.
+
+**Before you do**, and this is the real consideration rather than a
+technical one: client financial documents will leave your infrastructure
+and go to a third party. For a practice that needs a data processing
+agreement in place first, and confirmation in writing of the provider's
+retention terms — zero retention is generally available on request but
+should not be assumed. If you sell this, the provider becomes a named
+sub-processor you have to disclose to your own customers. Worth reading
+your existing engagement letters before the first client document goes
+through it.
+
+### Accuracy, honestly
+
+Header fields — supplier, number, date, totals — are reliable with current
+vision models. Line-item detail on multi-page or unusual layouts is less
+so, and the VAT breakdown on mixed-rate invoices is the weakest point. CIS
+reverse-charge invoices need watching because the notice wording varies by
+contractor and the VAT box is often blank by design.
+
+A stub tells you nothing about any of that. It is worth running fifty real
+invoices through a real model and counting the corrections before deciding
+this saves time on your particular post.
 
 ## The settlement layer
 

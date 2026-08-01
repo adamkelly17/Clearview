@@ -26,6 +26,7 @@ export default async function AppLayout({ children }) {
 
           <div className="nav-section">Purchases</div>
           <NavLink href="/suppliers">Suppliers</NavLink>
+          <NavLink href="/capture">Capture inbox</NavLink>
           <NavLink href="/bills">Bills</NavLink>
           <NavLink href="/money/payment">Money paid out</NavLink>
 
