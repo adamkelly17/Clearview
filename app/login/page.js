@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { readableError } from '@/lib/format';
+import { Wordmark } from '@/components/Logo';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -33,7 +34,8 @@ export default function LoginPage() {
   return (
     <div className="auth">
       <div className="auth-inner">
-        <div className="auth-mark">Ledger</div>
+        <Wordmark size={30} subtitle="Accounts" />
+        <div style={{ height: '1.25rem' }} />
         <h1>{sent ? 'Check your email' : 'Sign in'}</h1>
 
         {sent ? (

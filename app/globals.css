@@ -759,3 +759,46 @@ a:hover { text-decoration: underline; }
 @media (max-width: 620px) {
   .suggestion { flex-direction: column; align-items: stretch; gap: 0.625rem; }
 }
+
+/* --- Brand --------------------------------------------------------- */
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5625rem;
+}
+
+.brand-text { display: flex; flex-direction: column; line-height: 1.1; }
+
+.brand-name {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+}
+
+.brand-subtitle {
+  font-size: 0.6875rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 0.1875rem;
+}
+
+/* --- Void confirmation --------------------------------------------- */
+
+.void-panel {
+  position: absolute;
+  right: 1rem;
+  z-index: 20;
+  width: 20rem;
+  padding: 0.9375rem;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+  white-space: normal;
+}
+
+.row-voided td { opacity: 0.55; }
+.row-voided .num { text-decoration: line-through; }

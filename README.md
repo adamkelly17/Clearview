@@ -1,4 +1,6 @@
-# Ledger — Phases 1, 2, invoice capture and banking
+# Clearview
+
+Accounting that shows its working.
 
 A double-entry accounting system on Next.js 14, Supabase and Vercel.
 
@@ -46,6 +48,7 @@ supabase/migrations/0010_trading_rls.sql
 supabase/migrations/0011_fiscal_year.sql
 supabase/migrations/0012_capture.sql
 supabase/migrations/0013_banking.sql
+supabase/migrations/0014_void_and_vat.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -100,9 +103,10 @@ psql -d ledgertest -f supabase/test/01_ledger_test.sql
 psql -d ledgertest -f supabase/test/02_trading_test.sql
 psql -d ledgertest -f supabase/test/03_capture_test.sql
 psql -d ledgertest -f supabase/test/04_banking_test.sql
+psql -d ledgertest -f supabase/test/05_void_vat_test.sql
 ```
 
-Ninety-nine assertions across the four files. Each is independent — they can
+A hundred and eighteen assertions across the five files. Each is independent — they can
 be run in any order, repeatedly, against the same database.
 
 `01_ledger_test.sql` covers chart of accounts seeding, period generation,
@@ -129,6 +133,11 @@ ledger, VAT being taken out of a gross bank figure rather than added to
 it, rules being remembered and reused, transfers, settling a bill from
 the bank, unmatching, and the reconciliation figures agreeing with the
 nominal.
+
+`05_void_vat_test.sql` covers voiding — that the document survives, the
+journal reverses, the audit trail records who and why, aged debtors
+clears with no orphan balance, and a part-paid invoice refuses to be
+voided — plus the VAT registration guard in both directions.
 
 The RLS migrations (`0006`, `0010`, `0012`, `0013`) are safe to re-run: they clear
 their own policies first, because `CREATE POLICY` has no `IF NOT EXISTS`
@@ -306,6 +315,37 @@ A stub tells you nothing about any of that. It is worth running fifty real
 invoices through a real model and counting the corrections before deciding
 this saves time on your particular post.
 
+
+
+## Nothing is ever deleted
+
+A posted invoice or bill cannot be deleted, only **voided**. Voiding
+reverses the journal, marks the document void, and records who did it,
+when, and why. Both the original and the reversal stay in the transaction
+list for ever, so anyone auditing the books can see that something was
+entered and then taken back out.
+
+`void_document()` refuses if anything has been settled against the
+document. A payment is real; voiding around it would leave the control
+account disagreeing with the sub-ledger. Unallocate the payment first, or
+raise a credit note instead.
+
+The offsetting entry is a `contra` ledger item allocated against the
+original, so the document drops off aged debtors without leaving an
+orphan balance behind.
+
+## VAT is guarded in the database
+
+If an organisation is not VAT registered, `post_document()` strips every
+VAT code it is given. The same guard applies to the bank coding path
+through `apply_vat_guard()`.
+
+This is deliberately not only an interface concern. An earlier version
+hid the VAT column when VAT was switched off but still passed the default
+code, so a £20 bill posted as £20 net plus £4 VAT. Enforcing it in one
+place in the database means the invoice screen, the capture screen, the
+bank screen and anything built later all get it right without having to
+remember.
 
 ## Banking
 

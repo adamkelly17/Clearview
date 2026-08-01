@@ -975,7 +975,11 @@ begin
   -- ---------------- Straight to a category ------------------------
   else
     v_account := nullif(p_config ->> 'account_id', '')::uuid;
-    v_vat := nullif(p_config ->> 'vat_code_id', '')::uuid;
+    -- apply_vat_guard() returns null when the organisation is not VAT
+    -- registered, so a stray code from the interface cannot add VAT to a
+    -- business that does not charge it. Defined in 0014.
+    v_vat := apply_vat_guard(v_line.organisation_id,
+                             nullif(p_config ->> 'vat_code_id', '')::uuid);
 
     if v_account is null then
       raise exception 'Choose a category for this transaction'

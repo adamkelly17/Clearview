@@ -16,8 +16,11 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata = {
-  title: 'Ledger',
-  description: 'Bookkeeping that behaves itself.',
+  title: {
+    default: 'Clearview',
+    template: '%s · Clearview',
+  },
+  description: 'Accounting that shows its working.',
 };
 
 export default function RootLayout({ children }) {

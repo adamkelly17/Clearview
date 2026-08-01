@@ -11,6 +11,7 @@ import {
   periodCount,
   hasStubPeriod,
 } from '@/lib/fiscal';
+import { Wordmark } from '@/components/Logo';
 
 /* ---------------------------------------------------------------------
    Every question here is one the software genuinely cannot answer for
@@ -154,7 +155,9 @@ export default function SetupPage() {
   return (
     <div className="setup">
       <div className="setup-inner">
-        <div className="auth-mark">Ledger</div>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <Wordmark size={28} />
+        </div>
 
         <div className="setup-steps" role="progressbar" aria-valuenow={step + 1} aria-valuemin={1} aria-valuemax={STEPS.length}>
           {STEPS.map((s, i) => (
@@ -410,7 +413,7 @@ export default function SetupPage() {
                 </label>
 
                 <div className="notice notice-caution">
-                  Ledger works out your VAT return figures. Filing them with
+                  Clearview works out your VAT return figures. Filing them with
                   HMRC through Making Tax Digital is not built yet, so submit
                   the numbers through your existing route.
                 </div>
@@ -445,7 +448,7 @@ export default function SetupPage() {
                   <>
                     <div className="toggle-row">
                       <div className="toggle-copy">
-                        <div className="toggle-title">Track stock in Ledger</div>
+                        <div className="toggle-title">Track stock in Clearview</div>
                         <div className="toggle-desc">
                           Counts quantities in and out and values what is left.
                           Leave this off if you count stock once a year and
@@ -455,7 +458,7 @@ export default function SetupPage() {
                       <Toggle
                         on={form.stock_control_enabled}
                         onChange={(v) => set({ stock_control_enabled: v })}
-                        label="Track stock in Ledger"
+                        label="Track stock in Clearview"
                       />
                     </div>
 

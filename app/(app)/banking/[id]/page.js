@@ -104,7 +104,7 @@ export default async function BankAccountPage({ params, searchParams }) {
 
       <div className="grid grid-4">
         <div className="card"><div className="card-body">
-          <div className="eyebrow">Balance in Ledger</div>
+          <div className="eyebrow">Balance in Clearview</div>
           <div className="num" style={{ fontSize: '1.375rem', fontWeight: 600, marginTop: '0.25rem', textAlign: 'left' }}>
             {money(r.ledger_balance || 0, { currency: org.base_currency_code })}
           </div>

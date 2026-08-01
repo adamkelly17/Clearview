@@ -46,9 +46,14 @@ export default function DocumentForm({
   const router = useRouter();
   const cfg = CONFIG[docType];
 
-  const defaultVat = vatCodes.find((v) =>
-    cfg.ledger === 'sales' ? v.is_default_sales : v.is_default_purchase
-  );
+  /* Only ever default a VAT code when the business is actually VAT
+     registered. Previously the column was hidden but the default code was
+     still applied, so a 20.00 bill posted as 20.00 net plus 4.00 VAT. */
+  const defaultVat = vatEnabled
+    ? vatCodes.find((v) => (cfg.ledger === 'sales' ? v.is_default_sales : v.is_default_purchase))
+    : null;
+
+  const usableVatCodes = vatEnabled ? vatCodes : [];
 
   const [contactId, setContactId] = useState('');
   const [date, setDate] = useState(today());
@@ -80,7 +85,9 @@ export default function DocumentForm({
       ls.map((l) => ({
         ...l,
         account_id: l.account_id || c.default_account_id || '',
-        vat_code_id: l.vat_code_id || c.default_vat_code_id || defaultVat?.id || '',
+        vat_code_id: vatEnabled
+          ? l.vat_code_id || c.default_vat_code_id || defaultVat?.id || ''
+          : '',
       }))
     );
   }
@@ -110,7 +117,7 @@ export default function DocumentForm({
             100
         ) / 100;
 
-      const code = vatCodes.find((v) => v.id === l.vat_code_id);
+      const code = usableVatCodes.find((v) => v.id === l.vat_code_id);
       const rate = Number(code?.rate || 0);
 
       if (code?.is_reverse_charge) {
@@ -129,10 +136,10 @@ export default function DocumentForm({
     notional = Math.round(notional * 100) / 100;
 
     return { net, vat, notional, gross: Math.round((net + vat) * 100) / 100 };
-  }, [lines, vatCodes, cfg.ledger]);
+  }, [lines, usableVatCodes, cfg.ledger]);
 
   const hasReverseCharge = lines.some(
-    (l) => vatCodes.find((v) => v.id === l.vat_code_id)?.is_reverse_charge
+    (l) => usableVatCodes.find((v) => v.id === l.vat_code_id)?.is_reverse_charge
   );
 
   const filled = lines.filter((l) => l.account_id && Number(l.unit_price));
@@ -175,7 +182,7 @@ export default function DocumentForm({
           unit_price: Number(l.unit_price) || 0,
           discount_percent: Number(l.discount_percent) || 0,
           account_id: l.account_id,
-          vat_code_id: l.vat_code_id || null,
+          vat_code_id: vatEnabled ? l.vat_code_id || null : null,
         })),
       },
     });
@@ -393,7 +400,7 @@ export default function DocumentForm({
                           onChange={(e) => update(l.key, { vat_code_id: e.target.value })}
                         >
                           <option value="">No VAT</option>
-                          {vatCodes.map((v) => (
+                          {usableVatCodes.map((v) => (
                             <option key={v.id} value={v.id}>
                               {pro ? `${v.code} ${v.rate}%` : v.friendly_name}
                             </option>

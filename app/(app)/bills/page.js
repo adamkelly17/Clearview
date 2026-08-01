@@ -9,10 +9,10 @@ export default async function BillsPage() {
 
   const { data: documents } = await supabase
     .from('document')
-    .select('id, doc_type, number, date, due_date, gross_total, status, ledger_item_id, contact(name)')
+    .select('id, doc_type, number, date, due_date, gross_total, status, void_reason, ledger_item_id, contact(name)')
     .eq('organisation_id', org.id)
     .in('doc_type', ['PI', 'PC'])
-    .eq('status', 'posted')
+    .in('status', ['posted', 'void'])
     .order('date', { ascending: false })
     .limit(200);
 
