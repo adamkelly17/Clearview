@@ -54,6 +54,7 @@ supabase/migrations/0016_bank_rules.sql
 supabase/migrations/0017_change_year_end.sql
 supabase/migrations/0018_next_year.sql
 supabase/migrations/0019_undo_and_reallocate.sql
+supabase/migrations/0020_smarter_capture.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -257,6 +258,46 @@ confirmed on screen.
 
 The original file stays attached to the posted bill, because HMRC expects
 the paperwork behind any entry to be producible.
+
+### Supplier matching, and why trigrams were the wrong tool
+
+A real Amazon invoice reads as "Amazon EU S.à r.l., UK Branch". Against
+"Amazon" on file, trigram similarity scores 0.25 — most of the long name
+is not in the short one — so it fell under the threshold and matched
+nothing.
+
+Matching now goes: VAT number, exact name, **normalised** name, one name
+contained in the other, `word_similarity`, then trigram. Normalisation
+strips punctuation, legal forms and territory qualifiers, so both reduce
+to "amazon". As a side effect "Timber Supplies Limited" and "Timber
+Supplies Ltd" are now an exact match rather than a fuzzy one.
+
+Confirming a match **records the supplier's VAT number**. The first
+invoice from a supplier is matched on a name and confirmed by a human;
+every one after it matches on the VAT number, exactly, with no guessing.
+
+### Coding a supplier with no history
+
+`suggest_account_for_contact()` works from what a supplier's bills have
+gone to before, which is nothing on the first invoice. So the extraction
+prompt is now handed the organisation's chart of accounts and asked to
+pick a code per line.
+
+History still wins where it exists — what this supplier's bills have
+always gone to beats what a model inferred from a description.
+
+### Not VAT registered means the gross is the cost
+
+A business that is not VAT registered cannot reclaim VAT, so an £8.25
+invoice is an £8.25 cost — not £6.87 with £1.38 stranded. The review
+screen now fills the line at the gross figure, suggests no VAT code, and
+compares its total against the document's total rather than against a net
+figure that was never relevant.
+
+That last part was a real bug: the screen showed £8.24 against a document
+saying £8.25, purely from applying a VAT rate that should never have been
+suggested. Posting was correct, but a screen that disagrees with the
+paperwork in front of you is worse than useless.
 
 ### What makes it worth using rather than just OCR
 

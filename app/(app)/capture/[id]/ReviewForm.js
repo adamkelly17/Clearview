@@ -63,26 +63,47 @@ export default function ReviewForm({
   const [contactId, setContactId] = useState(extraction?.matched_contact_id || '');
   const [number, setNumber] = useState(extraction?.invoice_number || '');
   const [date, setDate] = useState(extraction?.invoice_date || '');
-  const [dueDate, setDueDate] = useState(extraction?.due_date || '');
+  /* Plenty of invoices carry no due date — a card purchase is already
+     paid. Falling back to the invoice date is right far more often than
+     leaving it blank, and it is still editable. */
+  const [dueDate, setDueDate] = useState(
+    extraction?.due_date || extraction?.invoice_date || ''
+  );
   const [lines, setLines] = useState(() => {
     if (extractionLines.length) {
-      return extractionLines.map((l) => ({
-        key: l.id,
-        description: l.description || '',
-        quantity: String(l.quantity ?? 1),
-        unit_price: String(l.unit_price ?? l.net_amount ?? ''),
-        account_id: l.suggested_account_id || '',
-        vat_code_id: l.suggested_vat_code_id || '',
-        confidence: l.confidence,
-      }));
+      return extractionLines.map((l) => {
+        const qty = Number(l.quantity) || 1;
+        const net = Number(l.net_amount) || 0;
+        const vat = Number(l.vat_amount) || 0;
+
+        /* A business that is not VAT registered cannot reclaim the VAT,
+           so the whole £8.25 is the cost — not £6.87 with £1.38 sitting
+           somewhere it can never be recovered from. Registered
+           businesses post the net and reclaim the rest. */
+        const amount = vatEnabled ? net : net + vat;
+        const unit = qty ? amount / qty : amount;
+
+        return {
+          key: l.id,
+          description: l.description || '',
+          quantity: String(qty),
+          unit_price: unit ? String(Math.round(unit * 100) / 100) : '',
+          account_id: l.suggested_account_id || '',
+          vat_code_id: vatEnabled ? l.suggested_vat_code_id || '' : '',
+          confidence: l.confidence,
+        };
+      });
     }
-    // Nothing itemised — start from the invoice total so a receipt with no
-    // legible detail is still one field away from being posted.
+
+    // Nothing itemised — start from the invoice total so a receipt with
+    // no legible detail is still one field away from being posted.
+    const fallback = vatEnabled ? extraction?.net_total : extraction?.gross_total;
+
     return [
       {
         ...blankLine(),
         description: extraction?.supplier_name ? 'Purchase' : '',
-        unit_price: extraction?.net_total != null ? String(extraction.net_total) : '',
+        unit_price: fallback != null ? String(fallback) : '',
       },
     ];
   });
@@ -107,7 +128,7 @@ export default function ReviewForm({
     for (const l of lines) {
       const lineNet =
         Math.round((Number(l.quantity) || 0) * (Number(l.unit_price) || 0) * 100) / 100;
-      const code = vatCodes.find((v) => v.id === l.vat_code_id);
+      const code = vatEnabled ? vatCodes.find((v) => v.id === l.vat_code_id) : null;
       if (code && !code.is_reverse_charge) {
         vat += Math.round(lineNet * Number(code.rate || 0)) / 100;
       }
@@ -116,7 +137,7 @@ export default function ReviewForm({
     net = Math.round(net * 100) / 100;
     vat = Math.round(vat * 100) / 100;
     return { net, vat, gross: Math.round((net + vat) * 100) / 100 };
-  }, [lines, vatCodes]);
+  }, [lines, vatCodes, vatEnabled]);
 
   /* Does what is on screen still agree with the document? */
   const stated = extraction?.gross_total == null ? null : Number(extraction.gross_total);
@@ -436,45 +457,51 @@ export default function ReviewForm({
           </div>
         </div>
 
-        {/* The reconciliation. This is the screen's real job: what you are
-            about to post, against what the document says. */}
+        {/* The screen's real job: what you are about to post, set against
+            what the document actually says. Anyone can check two numbers
+            match; nobody can check a number they cannot see. */}
         <div className="card mt-md">
+          <div className="card-head">
+            <h2>Does this agree with the document?</h2>
+          </div>
           <table className="table table-flush">
             <thead>
               <tr>
-                <th>Comparison</th>
-                <th className="num" style={{ width: '8rem' }}>Entered</th>
-                <th className="num" style={{ width: '8rem' }}>On document</th>
+                <th />
+                <th className="num" style={{ width: '9rem' }}>You are posting</th>
+                <th className="num" style={{ width: '9rem' }}>The document says</th>
               </tr>
             </thead>
             <tbody>
-              <tr className="no-hover">
-                <td className="muted">Net</td>
-                <td><span className="num">{money(totals.net)}</span></td>
-                <td>
-                  <span className={extraction?.net_total == null ? 'num num-nil' : 'num'}>
-                    {extraction?.net_total == null ? 'not read' : money(extraction.net_total)}
-                  </span>
-                </td>
-              </tr>
               {vatEnabled && (
-                <tr className="no-hover">
-                  <td className="muted">
-                    VAT
-                    <Flag confidence={conf.vat_total} />
-                  </td>
-                  <td><span className="num">{money(totals.vat)}</span></td>
-                  <td>
-                    <span className={extraction?.vat_total == null ? 'num num-nil' : 'num'}>
-                      {extraction?.vat_total == null ? 'not read' : money(extraction.vat_total)}
-                    </span>
-                  </td>
-                </tr>
+                <>
+                  <tr className="no-hover">
+                    <td className="muted">Before VAT</td>
+                    <td><span className="num">{money(totals.net)}</span></td>
+                    <td>
+                      <span className={extraction?.net_total == null ? 'num num-nil' : 'num'}>
+                        {extraction?.net_total == null ? 'not read' : money(extraction.net_total)}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr className="no-hover">
+                    <td className="muted">
+                      VAT
+                      <Flag confidence={conf.vat_total} />
+                    </td>
+                    <td><span className="num">{money(totals.vat)}</span></td>
+                    <td>
+                      <span className={extraction?.vat_total == null ? 'num num-nil' : 'num'}>
+                        {extraction?.vat_total == null ? 'not read' : money(extraction.vat_total)}
+                      </span>
+                    </td>
+                  </tr>
+                </>
               )}
             </tbody>
             <tfoot>
               <tr>
-                <td>Total</td>
+                <td>{vatEnabled ? 'Total' : 'Total cost'}</td>
                 <td>
                   <span className={`num ${driftMatters ? 'num-negative' : ''}`}>
                     {money(totals.gross, { currency: currencyCode })}
@@ -488,6 +515,20 @@ export default function ReviewForm({
               </tr>
             </tfoot>
           </table>
+
+          <div className="card-body" style={{ paddingTop: '0.75rem' }}>
+            <p className="hint" style={{ margin: 0 }}>
+              {vatEnabled ? (
+                <>These two should match. If they do not, a line is missing or a VAT rate is wrong.</>
+              ) : (
+                <>
+                  You are not VAT registered, so the whole amount including VAT is
+                  your cost — there is nothing to reclaim. These two figures should
+                  match.
+                </>
+              )}
+            </p>
+          </div>
         </div>
 
         {driftMatters && (

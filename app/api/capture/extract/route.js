@@ -71,10 +71,20 @@ export async function POST(request) {
 
     const buffer = await file.arrayBuffer();
 
+    /* The model can see what was bought but has no idea what the
+       categories are called, so it gets handed the chart of accounts.
+       Without this a supplier with no history gets no suggestion at
+       all, which is most of them the first time round. */
+    const { data: codingOptions } = await supabase.rpc('coding_options', {
+      p_organisation_id: capture.organisation_id,
+      p_ledger: capture.ledger,
+    });
+
     const result = await extractInvoice({
       fileBuffer: buffer,
       mimeType: capture.mime_type,
       fileName: capture.file_name,
+      codingOptions: codingOptions || [],
     });
 
     const { header, lines } = normaliseExtraction(result);
@@ -99,10 +109,30 @@ export async function POST(request) {
     if (insertError) throw new Error(insertError.message);
 
     if (lines.length) {
+      // Resolve the codes the model chose back to real accounts. A code
+      // it invented simply finds nothing and leaves the line uncoded,
+      // which is the right outcome.
+      const byCode = new Map(
+        (codingOptions || []).map((a) => [String(a.code).trim(), a])
+      );
+
+      const { data: accountRows } = await supabase
+        .from('account')
+        .select('id, code')
+        .eq('organisation_id', capture.organisation_id)
+        .in(
+          'code',
+          [...new Set(lines.map((l) => l.account_code).filter((c) => c && byCode.has(c)))]
+            .concat('__none__')
+        );
+
+      const idByCode = new Map((accountRows || []).map((a) => [a.code, a.id]));
+
       const { error: lineError } = await supabase.from('capture_extraction_line').insert(
-        lines.map((l) => ({
+        lines.map(({ account_code, ...l }) => ({
           organisation_id: capture.organisation_id,
           capture_extraction_id: extraction.id,
+          suggested_account_id: idByCode.get(account_code) || null,
           ...l,
         }))
       );

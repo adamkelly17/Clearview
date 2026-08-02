@@ -73,11 +73,14 @@ begin
   end if;
   raise notice 'PASS  exact name match ignores case';
 
+  -- Since 0020 the legal form is stripped before comparing, so this is
+  -- now an exact match rather than a fuzzy one — a better answer than
+  -- the trigram score it used to get.
   select * into v_match from match_contact(v_org, 'Timber Supplies Limited', null, true);
-  if v_match.contact_id <> v_timber or v_match.method <> 'similar_name' then
-    raise exception 'FAIL: expected a fuzzy match on "Limited" vs "Ltd", got %', v_match.method;
+  if v_match.contact_id <> v_timber or v_match.method <> 'exact_name' then
+    raise exception 'FAIL: "Limited" and "Ltd" should now match exactly, got %', v_match.method;
   end if;
-  raise notice 'PASS  "Limited" matched to "Ltd" as a similar name, score %', v_match.score;
+  raise notice 'PASS  "Limited" and "Ltd" match exactly once the legal form is stripped';
 
   select * into v_match from match_contact(v_org, 'Pennington Scaffolding', null, true);
   if v_match.contact_id is not null then
@@ -376,5 +379,134 @@ begin
 
   raise notice '';
   raise notice 'All capture tests passed.';
+end;
+$$;
+
+-- =====================================================================
+-- Fixes taken from a real Amazon invoice.
+-- =====================================================================
+
+do $$
+declare
+  v_user  uuid := gen_random_uuid();
+  v_org   uuid; v_amazon uuid; v_bt uuid; v_tools uuid;
+  v_cap uuid; v_ext uuid; v_doc uuid;
+  v_m record; v_n numeric;
+begin
+  insert into auth.users (id, email) values (v_user, 'amazon@example.com');
+  perform set_config('request.jwt.claim.sub', v_user::text, false);
+
+  v_org := create_organisation(jsonb_build_object(
+    'name','Adam Kelly','entity_type_code','sole_trader',
+    'year_end_day',5,'year_end_month',4,
+    'books_start_date','2026-01-01','vat_enabled',false));
+
+  select id into v_tools from account where organisation_id = v_org and code = '7701';
+
+  v_amazon := create_contact(jsonb_build_object(
+    'organisation_id',v_org,'name','Amazon','is_supplier',true));
+  v_bt := create_contact(jsonb_build_object(
+    'organisation_id',v_org,'name','BT Group plc','is_supplier',true));
+
+  raise notice '--- Matching a trading name inside a legal one';
+
+  select * into v_m from match_contact(v_org,'Amazon EU S.à r.l., UK Branch',null,true);
+  if v_m.contact_id <> v_amazon then
+    raise exception 'FAIL: "Amazon EU S.à r.l., UK Branch" should match "Amazon"';
+  end if;
+  raise notice 'PASS  "Amazon EU S.à r.l., UK Branch" matches "Amazon" — trigram scored only 0.25';
+
+  select * into v_m from match_contact(v_org,'TIMBER SUPPLIES LIMITED',null,true);
+  if v_m.contact_id is not null then
+    raise exception 'FAIL: an unknown supplier should not be matched to anything';
+  end if;
+  raise notice 'PASS  an unrelated name still matches nothing';
+
+  select * into v_m from match_contact(v_org,'BT Group PLC',null,true);
+  if v_m.contact_id <> v_bt then
+    raise exception 'FAIL: case and legal form should not defeat a match';
+  end if;
+  raise notice 'PASS  "BT Group PLC" matches "BT Group plc"';
+
+  raise notice '--- Nothing VAT-related for an unregistered business';
+
+  if suggest_vat_code_for_rate(v_org, 20) is not null then
+    raise exception 'FAIL: a VAT code was suggested to a business that is not registered';
+  end if;
+  raise notice 'PASS  no VAT code suggested when the business is not registered';
+
+  raise notice '--- The whole Amazon invoice';
+
+  insert into capture_document (organisation_id, storage_path, file_name, mime_type, status)
+  values (v_org, v_org || '/amz.pdf', 'Tape Measure.pdf', 'application/pdf', 'uploaded')
+  returning id into v_cap;
+
+  insert into capture_extraction (organisation_id, capture_document_id, provider, model,
+    supplier_name, supplier_vat_number, invoice_number, invoice_date, due_date,
+    net_total, vat_total, gross_total, currency_code)
+  values (v_org, v_cap, 'claude', 'claude-sonnet-4-6',
+    'Amazon EU S.à r.l., UK Branch', 'GB727255821', 'GB61FMRF3AEUI', '2026-02-18', null,
+    6.87, 1.38, 8.25, 'GBP')
+  returning id into v_ext;
+
+  -- The model chose a category from the chart of accounts it was given.
+  insert into capture_extraction_line (organisation_id, capture_extraction_id, line_no,
+    description, quantity, unit_price, net_amount, vat_rate, vat_amount, suggested_account_id)
+  values (v_org, v_ext, 1, 'STANLEY 8m Tylon Tape Measure', 1, 6.87, 6.87, 20, 1.38, v_tools);
+
+  perform finalise_extraction(v_ext);
+
+  if (select matched_contact_id from capture_extraction where id = v_ext) <> v_amazon then
+    raise exception 'FAIL: the supplier was not matched';
+  end if;
+  raise notice 'PASS  supplier matched on the review screen';
+
+  if (select suggested_vat_code_id from capture_extraction_line
+       where capture_extraction_id = v_ext) is not null then
+    raise exception 'FAIL: a VAT code was put on the line';
+  end if;
+  raise notice 'PASS  no VAT code on the line, so the screen total will match the document';
+
+  if (select suggested_account_id from capture_extraction_line
+       where capture_extraction_id = v_ext) is null then
+    raise exception 'FAIL: no category suggested';
+  end if;
+  raise notice 'PASS  a category is suggested even though this supplier has no history';
+
+  -- An unregistered business posts the gross: there is no VAT to reclaim.
+  v_doc := approve_capture(v_cap, jsonb_build_object(
+    'doc_type','PI','contact_id',v_amazon,'date','2026-02-18',
+    'due_date','2026-02-18','number','GB61FMRF3AEUI',
+    'lines', jsonb_build_array(jsonb_build_object(
+      'description','STANLEY Tape Measure','quantity',1,'unit_price',8.25,
+      'account_id',v_tools))));
+
+  if (select gross_total from document where id = v_doc) <> 8.25 then
+    raise exception 'FAIL: should post the full 8.25, got %',
+      (select gross_total from document where id = v_doc);
+  end if;
+  raise notice 'PASS  posts 8.25, the whole cost, not 6.87 with the VAT stranded';
+
+  select coalesce(sum(debit - credit), 0) into v_n from journal_line where account_id = v_tools;
+  if v_n <> 8.25 then
+    raise exception 'FAIL: the expense should be 8.25, got %', v_n;
+  end if;
+  raise notice 'PASS  the full 8.25 lands in the expense account';
+
+  raise notice '--- Learning the VAT number';
+
+  if (select vat_number from contact where id = v_amazon) <> 'GB727255821' then
+    raise exception 'FAIL: the VAT number was not learned from the confirmed match';
+  end if;
+  raise notice 'PASS  the supplier VAT number is remembered from the confirmed match';
+
+  select * into v_m from match_contact(v_org,'Some Completely Different Name','GB727255821',true);
+  if v_m.contact_id <> v_amazon or v_m.method <> 'vat_number' then
+    raise exception 'FAIL: the next invoice should match on VAT number';
+  end if;
+  raise notice 'PASS  the next Amazon invoice matches on VAT number, no guessing at all';
+
+  raise notice '';
+  raise notice 'All Amazon invoice tests passed.';
 end;
 $$;
