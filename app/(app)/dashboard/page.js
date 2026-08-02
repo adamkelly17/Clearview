@@ -28,6 +28,10 @@ export default async function DashboardPage() {
     supabase.rpc('aged_analysis', { p_organisation_id: org.id, p_ledger: 'purchase' }),
   ]);
 
+  const { data: nextYear } = await supabase.rpc('next_fiscal_year_preview', {
+    p_organisation_id: org.id,
+  });
+
   const rows = tb || [];
   const sumBy = (fn) =>
     rows.filter(fn).reduce((s, r) => s + Number(r.credit || 0) - Number(r.debit || 0), 0);
@@ -68,6 +72,25 @@ export default async function DashboardPage() {
           <Link href="/invoices/new" className="btn btn-primary">Raise an invoice</Link>
         </div>
       </div>
+
+      {nextYear?.available && (nextYear.overdue || nextYear.days_remaining <= 30) && (
+        <div className={`notice ${nextYear.overdue ? 'notice-caution' : 'notice-info'}`}>
+          {nextYear.overdue ? (
+            <>
+              <strong>Your financial year has ended.</strong> Nothing can be
+              posted after {shortDate(nextYear.previous_end)} until the next
+              year is added.
+            </>
+          ) : (
+            <>
+              Your financial year ends in {nextYear.days_remaining} days.
+            </>
+          )}
+          {' '}
+          <Link href="/settings">Add {shortDate(nextYear.start_date)} to{' '}
+          {shortDate(nextYear.end_date)}</Link>.
+        </div>
+      )}
 
       {journalCount === 0 && (
         <div className="notice notice-info">

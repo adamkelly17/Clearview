@@ -3,6 +3,7 @@ import { shortDate, MONTHS } from '@/lib/format';
 import FeatureToggles from './FeatureToggles';
 import PeriodList from './PeriodList';
 import YearEndControl from './YearEndControl';
+import NextYearControl from './NextYearControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,12 @@ export default async function SettingsPage() {
     .order('period_no');
 
   const canEdit = role === 'owner' || role === 'admin';
+
+  // What the next financial year would look like, so Settings can offer
+  // it rather than waiting for someone to be stopped mid-entry.
+  const { data: nextYear } = await supabase.rpc('next_fiscal_year_preview', {
+    p_organisation_id: org.id,
+  });
 
   return (
     <div className="page">
@@ -95,13 +102,10 @@ export default async function SettingsPage() {
             ))}
           </tbody>
         </table>
-        <div className="card-body" style={{ paddingTop: '0.75rem' }}>
-          <p className="hint">
-            The next year is created automatically when you close this one.
-            Changing the year end here adds or removes months from the open
-            year and sets the pattern future years will follow.
-          </p>
-        </div>
+        <NextYearControl
+          preview={nextYear ? { ...nextYear, organisation_id: org.id } : null}
+          canEdit={canEdit}
+        />
       </div>
     </div>
   );

@@ -51,6 +51,8 @@ supabase/migrations/0013_banking.sql
 supabase/migrations/0014_void_and_vat.sql
 supabase/migrations/0015_edit_documents.sql
 supabase/migrations/0016_bank_rules.sql
+supabase/migrations/0017_change_year_end.sql
+supabase/migrations/0018_next_year.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -107,6 +109,7 @@ psql -d ledgertest -f supabase/test/03_capture_test.sql
 psql -d ledgertest -f supabase/test/04_banking_test.sql
 psql -d ledgertest -f supabase/test/05_void_vat_test.sql
 psql -d ledgertest -f supabase/test/06_edit_test.sql
+psql -d ledgertest -f supabase/test/07_year_end_test.sql
 ```
 
 A hundred and forty-one assertions across the six files. Each is independent — they can
@@ -319,6 +322,29 @@ invoices through a real model and counting the corrections before deciding
 this saves time on your particular post.
 
 
+
+## Financial years
+
+Two things that get conflated, kept apart here:
+
+**Adding the next year** creates the periods so posting can continue.
+Nothing else changes. Settings offers it, and the dashboard prompts when
+the current year is within thirty days of ending or has already ended.
+Years always run back to back — a gap would mean transactions on the days
+between could never be posted, with nothing to say why.
+
+**Closing a year** rolls the profit into reserves, locks the periods and
+produces the final accounts. Still to build.
+
+You do the first the day the calendar rolls over and the second months
+later, once the accounts are agreed, so two open years side by side is
+normal rather than a mistake.
+
+**Changing a year end** after the fact is supported, because businesses do
+it — Companies House allows shortening freely and extending once every
+five years. Extending adds the missing months; shortening removes them,
+but only if nothing has been posted into them, and the preview says how
+many transactions are in the way before anything is altered.
 
 ## Editing is void and replace
 

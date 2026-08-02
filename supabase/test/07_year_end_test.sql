@@ -142,3 +142,125 @@ begin
   raise notice 'All year end change tests passed.';
 end;
 $$;
+
+-- =====================================================================
+-- Rolling on to the next financial year.
+-- =====================================================================
+
+do $$
+declare
+  v_user uuid := gen_random_uuid();
+  v_org  uuid; v_y1 uuid; v_bank uuid; v_sales uuid;
+  v_p jsonb; v_r jsonb; v_n int;
+begin
+  insert into auth.users (id, email) values (v_user, 'roll@example.com');
+  perform set_config('request.jwt.claim.sub', v_user::text, false);
+
+  v_org := create_organisation(jsonb_build_object(
+    'name','Rolling Ltd','entity_type_code','limited_company',
+    'year_end_day',31,'year_end_month',3,
+    'books_start_date','2026-04-01'));
+
+  select id into v_y1 from fiscal_year where organisation_id = v_org;
+  select id into v_bank  from account where organisation_id = v_org and code='1200';
+  select id into v_sales from account where organisation_id = v_org and code='4000';
+
+  raise notice '--- Posting beyond the last year';
+
+  begin
+    perform post_journal(v_org, '2027-05-10', 'Next year sale',
+      jsonb_build_array(
+        jsonb_build_object('account_id', v_bank, 'debit', 100),
+        jsonb_build_object('account_id', v_sales, 'credit', 100)));
+    raise exception 'FAIL: posted beyond the last financial year';
+  exception when no_data_found then
+    raise notice 'PASS  refused, and the message says where to fix it: %',
+      left(sqlerrm, 90);
+  end;
+
+  raise notice '--- Preview of the next year';
+
+  v_p := next_fiscal_year_preview(v_org);
+
+  if (v_p ->> 'start_date')::date <> '2027-04-01' then
+    raise exception 'FAIL: next year should start the day after the last ends, got %',
+      v_p ->> 'start_date';
+  end if;
+  if (v_p ->> 'end_date')::date <> '2028-03-31' then
+    raise exception 'FAIL: next year should end 31/03/2028, got %', v_p ->> 'end_date';
+  end if;
+  if (v_p ->> 'periods')::int <> 12 then
+    raise exception 'FAIL: expected 12 periods, got %', v_p ->> 'periods';
+  end if;
+  raise notice 'PASS  preview: 01/04/2027 to 31/03/2028, 12 periods, no gap';
+
+  raise notice '--- Creating it';
+
+  v_r := create_next_fiscal_year(v_org);
+
+  select count(*) into v_n from fiscal_year where organisation_id = v_org;
+  if v_n <> 2 then
+    raise exception 'FAIL: expected 2 financial years, got %', v_n;
+  end if;
+  raise notice 'PASS  second financial year created';
+
+  -- No gap between the years, or transactions on the days between could
+  -- never be posted and nothing would say why.
+  if (select min(start_date) from fiscal_year
+       where organisation_id = v_org and start_date > '2026-04-01')
+     <> (select max(end_date) from fiscal_year
+          where organisation_id = v_org and end_date < '2028-01-01') + 1 then
+    raise exception 'FAIL: there is a gap between the two years';
+  end if;
+  raise notice 'PASS  the two years run back to back with no gap';
+
+  perform post_journal(v_org, '2027-05-10', 'Next year sale',
+    jsonb_build_array(
+      jsonb_build_object('account_id', v_bank, 'debit', 100),
+      jsonb_build_object('account_id', v_sales, 'credit', 100)));
+  raise notice 'PASS  the transaction that was refused now posts';
+
+  -- Both years open at once is normal: you trade through the new year
+  -- while last year's accounts are still being finalised.
+  if (select count(*) from fiscal_year
+       where organisation_id = v_org and status = 'open') <> 2 then
+    raise exception 'FAIL: both years should be open';
+  end if;
+  raise notice 'PASS  both years open at once, as they should be while last year is finalised';
+
+  raise notice '--- Guards';
+
+  -- The next year always starts the day after the last one ends, so an
+  -- overlap is only reachable by asking for an end date behind that.
+  begin
+    perform create_next_fiscal_year(v_org, '2027-06-30');
+    raise exception 'FAIL: created a year ending before it starts';
+  exception when check_violation then
+    raise notice 'PASS  an end date earlier than the start refused';
+  end;
+
+  -- Overlap is reachable through the lower level function.
+  begin
+    perform create_fiscal_year(v_org, '2027-09-01', '2028-08-31');
+    raise exception 'FAIL: created a year overlapping an existing one';
+  exception when unique_violation then
+    raise notice 'PASS  a year overlapping an existing one refused';
+  end;
+
+  v_p := next_fiscal_year_preview(v_org);
+  if (v_p ->> 'start_date')::date <> '2028-04-01' then
+    raise exception 'FAIL: the preview should now follow the second year, got %',
+      v_p ->> 'start_date';
+  end if;
+  raise notice 'PASS  the preview now rolls on from the second year';
+
+  select sum(debit) into v_n from trial_balance(v_org, '2028-03-31');
+  if v_n <> (select sum(credit) from trial_balance(v_org, '2028-03-31')) then
+    raise exception 'FAIL: trial balance out of balance';
+  end if;
+  raise notice 'PASS  trial balance spans both years and still agrees';
+
+  raise notice '';
+  raise notice 'All next-year tests passed.';
+end;
+$$;
