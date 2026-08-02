@@ -139,7 +139,6 @@ function Line({
     pattern: line.suggested_pattern || '',
     scope: 'this',
     reach: null,
-    applyAll: true,
   });
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
@@ -238,13 +237,9 @@ function Line({
       return;
     }
 
-    if (rule.applyAll && rule.reach > 0) {
-      await supabase.rpc('apply_rule_to_unmatched', {
-        p_rule_id: ruleId,
-        p_bank_account_id: rule.scope === 'this' ? bankAccountId : null,
-      });
-    }
-
+    // Deliberately no bulk apply. The rule now suggests itself on every
+    // matching line, and each one is still accepted individually — every
+    // transaction gets looked at before it reaches the ledger.
     router.refresh();
   }
 
@@ -468,24 +463,20 @@ function Line({
                       </div>
 
                       {rule.reach != null && (
-                        <div className={`notice ${rule.reach > 0 ? 'notice-info' : 'notice-caution'}`} style={{ marginTop: '0.625rem', marginBottom: 0 }}>
+                        <p className="hint" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
                           {rule.reach > 0 ? (
                             <>
-                              This also matches <strong>{rule.reach}</strong> other line
-                              {rule.reach === 1 ? '' : 's'} waiting here.
-                              <label className="row" style={{ gap: '0.5rem', marginTop: '0.5rem', cursor: 'pointer' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={rule.applyAll}
-                                  onChange={(e) => setRule((r) => ({ ...r, applyAll: e.target.checked }))}
-                                />
-                                <span className="small">Deal with those now too</span>
-                              </label>
+                              This will be suggested on <strong>{rule.reach}</strong> other
+                              line{rule.reach === 1 ? '' : 's'} waiting here, and on future
+                              statements. Nothing is posted until you accept it.
                             </>
                           ) : (
-                            <>Nothing else here matches that yet. It will apply to future statements.</>
+                            <>
+                              Nothing else here matches yet. It will be suggested on
+                              future statements.
+                            </>
                           )}
-                        </div>
+                        </p>
                       )}
                     </div>
                   )}

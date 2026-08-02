@@ -53,6 +53,7 @@ supabase/migrations/0015_edit_documents.sql
 supabase/migrations/0016_bank_rules.sql
 supabase/migrations/0017_change_year_end.sql
 supabase/migrations/0018_next_year.sql
+supabase/migrations/0019_undo_and_reallocate.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -110,6 +111,7 @@ psql -d ledgertest -f supabase/test/04_banking_test.sql
 psql -d ledgertest -f supabase/test/05_void_vat_test.sql
 psql -d ledgertest -f supabase/test/06_edit_test.sql
 psql -d ledgertest -f supabase/test/07_year_end_test.sql
+psql -d ledgertest -f supabase/test/08_undo_reallocate_test.sql
 ```
 
 A hundred and forty-one assertions across the six files. Each is independent — they can
@@ -365,8 +367,29 @@ there is no field quietly carried over and no partial update to get wrong.
 The original's lines survive too, so the superseded version can still be
 read.
 
-Same restriction as voiding: refused if anything has been settled against
-it.
+### An invoice with a payment against it can still be edited
+
+This is safe for one reason worth stating plainly: **an allocation never
+touches the nominal ledger**. `allocation` records which payment answers
+to which invoice and nothing else — the money moved when the payment was
+posted. So allocations can be taken apart and put back without the
+control account ever being wrong at any point in between.
+
+The order is: unallocate, void, post the replacement, re-apply what fits.
+
+The case that needs care is a replacement smaller than what was paid.
+Editing a paid £600 invoice down to £400 leaves £200 the customer has
+overpaid. That is a real credit: £400 goes back onto the new invoice, the
+£200 sits on account, and the screen says so rather than letting it
+disappear quietly. Trade debtors reads −£200 and the sales ledger agrees.
+
+Voiding keeps the old restriction, because unlike an edit there is no
+replacement for the payment to move to. Unallocate it first — there is now
+a button for that on the contact screen.
+
+A document already reported on a filed VAT return cannot be edited at all.
+No return can be filed yet, but the guard is in place for when they can
+be.
 
 ## Nothing is ever deleted
 
@@ -461,6 +484,32 @@ waiting lines it would catch — so the reach of a rule is visible before it
 is saved rather than discovered afterwards. Saving offers to apply it to
 those lines immediately, which is the difference between a rule saving
 time this month and next month.
+
+### Undo
+
+Matched and ignored lines both have an undo that puts them back in the
+list. What it does depends on what the line did:
+
+- **Created a transaction** — that transaction is reversed, and both
+  entries stay in the audit trail. Any sales or purchase ledger entry it
+  created goes with it, or the control account and the sub-ledger would
+  stop agreeing.
+- **Matched to something already there** — only the link is broken. The
+  transaction is left alone.
+
+The confirmation says which of the two is about to happen, because they
+are quite different.
+
+### Rules suggest, they never act
+
+A saved rule is offered as a suggestion on every line it matches, and each
+one is still accepted individually. There is deliberately no "apply this
+to the other eleven" — every transaction gets looked at before it reaches
+the ledger, which is the whole point of a reconciliation screen.
+
+Saving a rule does say how many other waiting lines it will be suggested
+on, because that is how you judge whether a pattern is too broad or too
+narrow. It is information, not an offer.
 
 ### Matching, in order of trustworthiness
 

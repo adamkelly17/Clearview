@@ -79,7 +79,7 @@ begin
   raise notice '--- Editing it';
   -- ---------------------------------------------------------------
 
-  v_new := replace_document(v_inv, jsonb_build_object(
+  v_new := (replace_document(v_inv, jsonb_build_object(
     'doc_type', 'SI',
     'contact_id', v_cust,
     'date', '2026-05-03',
@@ -87,7 +87,7 @@ begin
     'lines', jsonb_build_array(
       jsonb_build_object('description', 'Kitchen fit, revised', 'quantity', 1,
         'unit_price', 1400, 'account_id', v_sales, 'vat_code_id', v_t1))),
-    'Wrong price agreed');
+    'Wrong price agreed') ->> 'new_document_id')::uuid;
 
   if (select status from document where id = v_inv) <> 'void' then
     raise exception 'FAIL: the original should be void';
@@ -183,7 +183,7 @@ begin
 
   -- Different supplier, different number, different date, different
   -- category, different VAT treatment, different amount.
-  v_new := replace_document(v_bill, jsonb_build_object(
+  v_new := (replace_document(v_bill, jsonb_build_object(
     'doc_type', 'PI',
     'contact_id', v_supp2,
     'date', '2026-06-11',
@@ -191,7 +191,7 @@ begin
     'lines', jsonb_build_array(jsonb_build_object(
       'description', 'Excavator hire', 'quantity', 2, 'unit_price', 250,
       'account_id', v_rent, 'vat_code_id', v_t0))),
-    'Booked against the wrong supplier');
+    'Booked against the wrong supplier') ->> 'new_document_id')::uuid;
 
   if (select contact_id from document where id = v_new) <> v_supp2 then
     raise exception 'FAIL: the supplier did not change';
@@ -253,15 +253,36 @@ begin
       'item_id', (select ledger_item_id from document where id = v_inv),
       'amount', 100.00))));
 
+  -- A part-paid invoice can now be edited: the payment comes off, the
+  -- replacement is posted, and the payment goes back on.
+  declare
+    v_res jsonb;
   begin
-    perform replace_document(v_inv, jsonb_build_object(
+    v_res := replace_document(v_inv, jsonb_build_object(
       'doc_type', 'SI', 'contact_id', v_cust, 'date', '2026-07-01',
       'lines', jsonb_build_array(jsonb_build_object(
         'description', 'Bathroom', 'quantity', 1, 'unit_price', 600,
         'account_id', v_sales, 'vat_code_id', v_t1))));
-    raise exception 'FAIL: edited a part-paid invoice';
-  exception when check_violation then
-    raise notice 'PASS  editing a part-paid invoice refused, with the amount named';
+
+    if (v_res ->> 'payments_reapplied')::numeric <> 100.00 then
+      raise exception 'FAIL: the 100.00 payment should have been reapplied, got %',
+        v_res ->> 'payments_reapplied';
+    end if;
+    raise notice 'PASS  a part-paid invoice can be edited, and the 100.00 payment is put back';
+
+    if (v_res ->> 'left_on_account')::numeric <> 0 then
+      raise exception 'FAIL: nothing should be left on account here';
+    end if;
+
+    if (select outstanding_amount from ledger_item_outstanding
+         where id = (select ledger_item_id from document
+                      where id = (v_res ->> 'new_document_id')::uuid)) <> 620.00 then
+      raise exception 'FAIL: 720.00 less the 100.00 already paid should leave 620.00, got %',
+        (select outstanding_amount from ledger_item_outstanding
+          where id = (select ledger_item_id from document
+                       where id = (v_res ->> 'new_document_id')::uuid));
+    end if;
+    raise notice 'PASS  the replacement shows 620.00 outstanding, net of what was already paid';
   end;
 
   -- ---------------------------------------------------------------

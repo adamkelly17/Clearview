@@ -3,6 +3,7 @@
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Money from '@/components/Money';
+import UnallocateButton from '@/components/UnallocateButton';
 import { money, shortDate } from '@/lib/format';
 
 const ITEM_LABELS = {
@@ -84,6 +85,7 @@ export default function ContactActivity({ rows, showAll, currencyCode, pro }) {
               <th className="num" style={{ width: '8rem' }}>Amount</th>
               <th className="num" style={{ width: '8rem' }}>Outstanding</th>
               {showAll && <th className="num" style={{ width: '8rem' }}>Balance</th>}
+              <th style={{ width: '6.5rem' }} />
             </tr>
           </thead>
           <tbody>
@@ -129,6 +131,14 @@ export default function ContactActivity({ rows, showAll, currencyCode, pro }) {
                   </td>
                   <td><Money value={r.outstanding_amount} blankZero /></td>
                   {showAll && <td><Money value={r.running_balance} /></td>}
+                  <td className="actions" style={{ position: 'relative' }}>
+                    {!voided && Number(r.gross_amount) > Number(r.outstanding_amount) && (
+                      <UnallocateButton
+                        itemId={r.item_id}
+                        allocated={Number(r.gross_amount) - Number(r.outstanding_amount)}
+                      />
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -142,6 +152,7 @@ export default function ContactActivity({ rows, showAll, currencyCode, pro }) {
                 <Money value={showAll ? closing : total} />
               </td>
               {showAll && <td><Money value={closing} /></td>}
+              <td />
             </tr>
           </tfoot>
         </table>

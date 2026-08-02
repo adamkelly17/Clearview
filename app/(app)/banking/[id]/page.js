@@ -4,6 +4,7 @@ import { requireOrg } from '@/lib/org';
 import { money, shortDate } from '@/lib/format';
 import Money from '@/components/Money';
 import ReconcileSplit from './ReconcileSplit';
+import UndoButton from './UndoButton';
 import { suggestRulePattern } from '@/lib/statement';
 
 export const dynamic = 'force-dynamic';
@@ -207,6 +208,7 @@ export default async function BankAccountPage({ params, searchParams }) {
                 <th>Description</th>
                 <th className="num" style={{ width: '8rem' }}>Amount</th>
                 <th>{view === 'excluded' ? 'Reason' : 'Matched'}</th>
+                <th style={{ width: '5rem' }} />
               </tr>
             </thead>
             <tbody>
@@ -225,6 +227,12 @@ export default async function BankAccountPage({ params, searchParams }) {
                       : l.matched_at
                       ? shortDate(l.matched_at)
                       : ''}
+                  </td>
+                  <td className="actions" style={{ position: 'relative' }}>
+                    <UndoButton
+                      lineId={l.id}
+                      createdSomething={Boolean(l.created_journal_id)}
+                    />
                   </td>
                 </tr>
               ))}

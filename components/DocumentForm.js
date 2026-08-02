@@ -205,7 +205,7 @@ export default function DocumentForm({
       })),
     };
 
-    const { error } = isEdit
+    const { data, error } = isEdit
       ? await supabase.rpc('replace_document', {
           p_document_id: editing.id,
           p_config: config,
@@ -217,6 +217,14 @@ export default function DocumentForm({
 
     if (error) {
       setError(readableError(error));
+      return;
+    }
+
+    // An edit that no longer fits the payment against it leaves money on
+    // account. That has to be said, not slipped past on a redirect.
+    if (isEdit && Number(data?.left_on_account) > 0) {
+      setOutcome(data);
+      router.refresh();
       return;
     }
 
@@ -249,6 +257,24 @@ export default function DocumentForm({
   return (
     <>
       {error && <div className="notice notice-error">{error}</div>}
+
+      {outcome && (
+        <div className="notice notice-caution">
+          <strong>Saved as {outcome.new_number}.</strong>{' '}
+          {money(outcome.payments_reapplied, { currency: currencyCode })} of the
+          payment has been put back against it, and{' '}
+          <strong>{money(outcome.left_on_account, { currency: currencyCode })}</strong>{' '}
+          no longer fits — it is now sitting on account as a credit.
+          <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+            <a
+              href={cfg.ledger === 'sales' ? '/invoices' : '/bills'}
+              className="btn btn-primary btn-sm"
+            >
+              Done
+            </a>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div className="card-body">
