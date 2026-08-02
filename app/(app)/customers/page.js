@@ -79,6 +79,7 @@ export default async function CustomersPage() {
                 <th>Contact</th>
                 <th className="num" style={{ width: '9rem' }}>Owed</th>
                 <th style={{ width: '9rem' }}>Oldest due</th>
+                <th style={{ width: '5.5rem' }} />
               </tr>
             </thead>
             <tbody>
@@ -89,7 +90,7 @@ export default async function CustomersPage() {
                   <tr key={c.id}>
                     {pro && <td className="code">{c.code}</td>}
                     <td>
-                      <Link href={`/customers/${c.id}`}>{c.name}</Link>
+                      <Link href={`/customers/${c.id}`} className="table-link">{c.name}</Link>
                       {c.on_hold && <> <span className="pill pill-negative">On hold</span></>}
                       {!c.active && <> <span className="pill">Inactive</span></>}
                     </td>
@@ -102,6 +103,11 @@ export default async function CustomersPage() {
                           {over && <> <span className="pill pill-negative">Overdue</span></>}
                         </>
                       ) : ''}
+                    </td>
+                    <td className="actions">
+                      <Link href={`/customers/${c.id}`} className="btn btn-open btn-sm">
+                        Open
+                      </Link>
                     </td>
                   </tr>
                 );

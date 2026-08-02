@@ -43,7 +43,7 @@ export default function ReverseButton({ journalId, description }) {
 
   if (!confirming) {
     return (
-      <button className="btn btn-ghost btn-sm" onClick={() => setConfirming(true)}>
+      <button className="btn btn-open btn-sm" onClick={() => setConfirming(true)}>
         Reverse
       </button>
     );

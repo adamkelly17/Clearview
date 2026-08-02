@@ -101,8 +101,32 @@ h3 { font-size: 0.9375rem; }
 p { margin: 0 0 0.75rem; }
 p:last-child { margin-bottom: 0; }
 
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
+/* Links carry a permanent underline. Colour alone is not an affordance —
+   on a navy palette, navy link text beside near-navy body text is
+   invisible as a control. */
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  text-decoration-color: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+a:hover {
+  text-decoration-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+/* Anything that looks like a control carries its own affordance and
+   must not be underlined as well. */
+.btn, .nav-link, .brand, a.no-underline { text-decoration: none; }
+
+/* The primary link in a table row: heavier, so the eye finds it before
+   it finds the figures. */
+.table-link {
+  font-weight: 500;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
 
 .eyebrow {
   font-size: 0.6875rem;
@@ -280,6 +304,48 @@ a:hover { text-decoration: underline; }
 .table-flush td:first-child, .table-flush th:first-child { padding-left: 1.25rem; }
 .table-flush td:last-child,  .table-flush th:last-child  { padding-right: 1.25rem; }
 
+/* Every row that can be acted on ends in one of these. Right aligned and
+   never wrapping, so the controls line up down the table. */
+.table td.actions {
+  text-align: right;
+  white-space: nowrap;
+  padding-top: 0.4375rem;
+  padding-bottom: 0.4375rem;
+}
+
+.table td.actions .btn + .btn { margin-left: 0.25rem; }
+
+/* The open control is quiet until the row is hovered, then it firms up.
+   Present enough to be found, quiet enough not to shout on every row. */
+.btn-open {
+  background: var(--surface);
+  color: var(--accent);
+  border-color: var(--line-strong);
+}
+
+.table tbody tr:hover .btn-open {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+.btn-open:hover { background: var(--accent-wash) !important; border-color: var(--accent) !important; }
+
+/* A chevron for rows that expand rather than navigate. */
+.chev {
+  display: inline-block;
+  transition: transform 140ms ease;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.chev-open { transform: rotate(90deg); color: var(--accent); }
+
+/* Rows that expand in place get a pointer and a firmer hover, so it is
+   obvious the whole row is the control. */
+.row-expandable { cursor: pointer; }
+.row-expandable:hover { background: var(--accent-wash) !important; }
+.row-expanded { background: var(--accent-wash) !important; }
+
 .row-group td {
   background: var(--surface-sunk);
   font-size: 0.6875rem;
@@ -351,6 +417,7 @@ a:hover { text-decoration: underline; }
 }
 
 .btn:hover { text-decoration: none; }
+.btn:active:not(:disabled) { transform: translateY(0.5px); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn-primary { background: var(--accent); color: #fff; }

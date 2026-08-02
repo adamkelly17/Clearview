@@ -103,7 +103,7 @@ export default async function BankingPage() {
                 <th className="num" style={{ width: '9rem' }}>Balance</th>
                 <th className="num" style={{ width: '8rem' }}>Unreconciled</th>
                 <th style={{ width: '8rem' }}>To deal with</th>
-                <th style={{ width: '9rem' }} />
+                <th style={{ width: '11.5rem' }} />
               </tr>
             </thead>
             <tbody>
@@ -115,7 +115,7 @@ export default async function BankingPage() {
                   <tr key={b.id}>
                     {pro && <td className="code">{b.account?.code}</td>}
                     <td>
-                      <Link href={`/banking/${b.id}`}>{b.name}</Link>
+                      <Link href={`/banking/${b.id}`} className="table-link">{b.name}</Link>
                       {b.sort_code && (
                         <>
                           {' '}
@@ -135,9 +135,12 @@ export default async function BankingPage() {
                         <span className="pill pill-accent">Clear</span>
                       )}
                     </td>
-                    <td>
+                    <td className="actions">
                       <Link href={`/banking/${b.id}/import`} className="btn btn-secondary btn-sm">
                         Import
+                      </Link>
+                      <Link href={`/banking/${b.id}`} className="btn btn-open btn-sm">
+                        Open
                       </Link>
                     </td>
                   </tr>

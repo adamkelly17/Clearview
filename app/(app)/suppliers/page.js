@@ -70,6 +70,7 @@ export default async function SuppliersPage() {
                 <th style={{ width: '6rem' }} />
                 <th className="num" style={{ width: '9rem' }}>You owe</th>
                 <th style={{ width: '8rem' }}>Oldest due</th>
+                <th style={{ width: '5.5rem' }} />
               </tr>
             </thead>
             <tbody>
@@ -79,13 +80,18 @@ export default async function SuppliersPage() {
                   <tr key={c.id}>
                     {pro && <td className="code">{c.code}</td>}
                     <td>
-                      <Link href={`/suppliers/${c.id}`}>{c.name}</Link>
+                      <Link href={`/suppliers/${c.id}`} className="table-link">{c.name}</Link>
                       {!c.active && <> <span className="pill">Inactive</span></>}
                     </td>
                     <td className="muted small">{c.email || c.phone || ''}</td>
                     <td>{c.cis_registered && <span className="pill pill-accent">CIS</span>}</td>
                     <td><Money value={a?.total || 0} blankZero /></td>
                     <td className="small">{a?.oldest_due ? shortDate(a.oldest_due) : ''}</td>
+                    <td className="actions">
+                      <Link href={`/suppliers/${c.id}`} className="btn btn-open btn-sm">
+                        Open
+                      </Link>
+                    </td>
                   </tr>
                 );
               })}

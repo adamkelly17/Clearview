@@ -28,7 +28,7 @@ export default async function AgedCreditorsPage({ searchParams }) {
       </div>
 
       <div className="card">
-        <AgedReport rows={rows || []} pro={features.accountant_mode} />
+        <AgedReport rows={rows || []} pro={features.accountant_mode} contactBase="/suppliers" />
       </div>
 
       <p className="hint mt-md">

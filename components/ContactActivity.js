@@ -135,7 +135,7 @@ export default function ContactActivity({ rows, showAll, currencyCode, pro }) {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={showAll ? 5 : 5}>
+              <td colSpan={5}>
                 {showAll ? 'Closing balance' : 'Total outstanding'}
               </td>
               <td>

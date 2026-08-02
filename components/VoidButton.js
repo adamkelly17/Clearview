@@ -51,7 +51,7 @@ export default function VoidButton({ documentId, number, label = 'Void' }) {
 
   if (!open) {
     return (
-      <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>
+      <button className="btn btn-open btn-sm" onClick={() => setOpen(true)}>
         {label}
       </button>
     );

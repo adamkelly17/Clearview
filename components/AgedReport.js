@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import Money from '@/components/Money';
 
 const COLUMNS = [
@@ -13,7 +14,7 @@ const COLUMNS = [
  * credit notes and payments on account show as negatives in the current
  * column, so the total always agrees with the control account.
  */
-export default function AgedReport({ rows, pro, showLimit = false }) {
+export default function AgedReport({ rows, pro, showLimit = false, contactBase }) {
   if (rows.length === 0) {
     return (
       <div className="empty">
@@ -40,6 +41,7 @@ export default function AgedReport({ rows, pro, showLimit = false }) {
           ))}
           <th className="num">Total</th>
           {showLimit && <th style={{ width: '7rem' }}>Limit</th>}
+          {contactBase && <th style={{ width: '5.5rem' }} />}
         </tr>
       </thead>
       <tbody>
@@ -51,7 +53,13 @@ export default function AgedReport({ rows, pro, showLimit = false }) {
             <tr key={r.contact_id}>
               {pro && <td className="code">{r.contact_code}</td>}
               <td>
-                {r.contact_name}
+                {contactBase ? (
+                  <Link href={`${contactBase}/${r.contact_id}`} className="table-link">
+                    {r.contact_name}
+                  </Link>
+                ) : (
+                  r.contact_name
+                )}
                 {r.oldest_due && new Date(r.oldest_due) < new Date() && (
                   <> <span className="pill pill-negative">Overdue</span></>
                 )}
@@ -69,6 +77,13 @@ export default function AgedReport({ rows, pro, showLimit = false }) {
                   )}
                 </td>
               )}
+              {contactBase && (
+                <td className="actions">
+                  <Link href={`${contactBase}/${r.contact_id}`} className="btn btn-open btn-sm">
+                    Open
+                  </Link>
+                </td>
+              )}
             </tr>
           );
         })}
@@ -81,6 +96,7 @@ export default function AgedReport({ rows, pro, showLimit = false }) {
           ))}
           <td><Money value={grand} /></td>
           {showLimit && <td />}
+          {contactBase && <td />}
         </tr>
       </tfoot>
     </table>

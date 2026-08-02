@@ -28,7 +28,7 @@ export default async function AgedDebtorsPage({ searchParams }) {
       </div>
 
       <div className="card">
-        <AgedReport rows={rows || []} pro={features.accountant_mode} showLimit />
+        <AgedReport rows={rows || []} pro={features.accountant_mode} showLimit contactBase="/customers" />
       </div>
 
       <p className="hint mt-md">

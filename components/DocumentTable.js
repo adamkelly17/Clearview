@@ -11,7 +11,7 @@ const STATUS = {
 
 /** Shared list for invoices, credit notes and bills. */
 export default function DocumentTable({
-  rows, pro, emptyTitle, emptyBody, newHref, newLabel, editBase,
+  rows, pro, emptyTitle, emptyBody, newHref, newLabel, editBase, contactBase,
 }) {
   if (rows.length === 0) {
     return (
@@ -53,7 +53,13 @@ export default function DocumentTable({
               <td className="nowrap">{shortDate(d.date)}</td>
               <td className="code">{d.number}</td>
               <td>
-                {d.contact?.name}
+                {contactBase && d.contact?.id ? (
+                  <Link href={`${contactBase}/${d.contact.id}`} className="table-link">
+                    {d.contact.name}
+                  </Link>
+                ) : (
+                  d.contact?.name
+                )}
                 {d.doc_type === 'SC' || d.doc_type === 'PC' ? (
                   <> <span className="pill">Credit note</span></>
                 ) : null}
@@ -77,11 +83,11 @@ export default function DocumentTable({
                   </span>
                 )}
               </td>
-              <td style={{ position: 'relative' }}>
+              <td className="actions" style={{ position: 'relative' }}>
                 {!voided && d.settlement_status === 'outstanding' && (
                   <span className="row" style={{ gap: '0.125rem' }}>
                     {editBase && (
-                      <Link href={`${editBase}/${d.id}/edit`} className="btn btn-ghost btn-sm">
+                      <Link href={`${editBase}/${d.id}/edit`} className="btn btn-open btn-sm">
                         Edit
                       </Link>
                     )}

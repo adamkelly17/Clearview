@@ -113,7 +113,7 @@ export default async function JournalsPage() {
                     <td>
                       <Money value={j.total} />
                     </td>
-                    <td>
+                    <td className="actions">
                       {!reversed && !j.reverses_journal_id && (
                         <ReverseButton journalId={j.id} description={j.description} />
                       )}

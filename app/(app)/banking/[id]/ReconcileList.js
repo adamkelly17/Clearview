@@ -174,7 +174,10 @@ function LineRow({ line, orgId, accounts, vatCodes, contacts, bankAccounts, pro,
 
   return (
     <>
-      <tr onClick={expand} style={{ cursor: 'pointer' }}>
+      <tr
+        onClick={expand}
+        className={`row-expandable ${open ? 'row-expanded' : ''}`}
+      >
         <td className="nowrap">{shortDate(line.date)}</td>
         <td className="small">{line.description}</td>
         <td>
@@ -193,8 +196,11 @@ function LineRow({ line, orgId, accounts, vatCodes, contacts, bankAccounts, pro,
             <span className="pill">Needs coding</span>
           )}
         </td>
-        <td>
-          <button className="btn btn-ghost btn-sm">{open ? 'Close' : 'Deal with it'}</button>
+        <td className="actions">
+          <button className={`btn btn-sm ${open ? 'btn-secondary' : 'btn-primary'}`}>
+            <span className={`chev ${open ? 'chev-open' : ''}`}>›</span>
+            {open ? 'Close' : 'Deal with it'}
+          </button>
         </td>
       </tr>
 
@@ -225,7 +231,7 @@ function LineRow({ line, orgId, accounts, vatCodes, contacts, bankAccounts, pro,
                   {['nominal', 'settle', 'transfer'].map((m) => (
                     <button
                       key={m}
-                      className={`btn btn-sm ${mode === m ? 'btn-primary' : 'btn-ghost'}`}
+                      className={`btn btn-sm ${mode === m ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setMode(m)}
                     >
                       {m === 'nominal'

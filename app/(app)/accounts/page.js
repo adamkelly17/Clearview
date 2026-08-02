@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import Link from 'next/link';
 import { requireOrg } from '@/lib/org';
 import Money from '@/components/Money';
 
@@ -53,13 +54,14 @@ export default async function AccountsPage() {
               {pro && <th>Type</th>}
               <th style={{ width: '8rem' }} />
               <th className="num" style={{ width: '9rem' }}>Balance</th>
+              <th style={{ width: '5.5rem' }} />
             </tr>
           </thead>
           <tbody>
             {ordered.map(([group, { rows }]) => (
               <Fragment key={group}>
                 <tr className="row-group no-hover">
-                  <td colSpan={pro ? 5 : 3}>{group}</td>
+                  <td colSpan={pro ? 6 : 4}>{group}</td>
                 </tr>
                 {rows.map((a) => {
                   const bal = balances.get(a.id) || 0;
@@ -67,7 +69,9 @@ export default async function AccountsPage() {
                     <tr key={a.id}>
                       {pro && <td className="code">{a.code}</td>}
                       <td>
-                        {pro ? a.name : a.friendly_name || a.name}
+                        <Link href={`/accounts/${a.id}`} className="table-link">
+                          {pro ? a.name : a.friendly_name || a.name}
+                        </Link>
                         {!a.active && ' '}
                         {!a.active && <span className="pill">Inactive</span>}
                       </td>
@@ -78,6 +82,11 @@ export default async function AccountsPage() {
                         )}
                       </td>
                       <td><Money value={bal} blankZero /></td>
+                      <td className="actions">
+                        <Link href={`/accounts/${a.id}`} className="btn btn-open btn-sm">
+                          Open
+                        </Link>
+                      </td>
                     </tr>
                   );
                 })}

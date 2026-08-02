@@ -9,7 +9,7 @@ export default async function BillsPage() {
 
   const { data: documents } = await supabase
     .from('document')
-    .select('id, doc_type, number, date, due_date, gross_total, status, void_reason, ledger_item_id, contact(name)')
+    .select('id, doc_type, number, date, due_date, gross_total, status, void_reason, ledger_item_id, contact(id, name)')
     .eq('organisation_id', org.id)
     .in('doc_type', ['PI', 'PC'])
     .in('status', ['posted', 'void'])
@@ -52,6 +52,7 @@ export default async function BillsPage() {
           pro={features.accountant_mode}
           emptyTitle="No bills yet"
           emptyBody="Enter your first supplier invoice and it will appear here with what is still to pay."
+          contactBase="/suppliers"
           editBase="/bills"
           newHref="/bills/new"
           newLabel="Enter a bill"

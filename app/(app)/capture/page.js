@@ -140,17 +140,17 @@ export default async function CaptureInboxPage() {
                         <> <span className="pill pill-negative">{issues}</span></>
                       )}
                     </td>
-                    <td>
+                    <td className="actions">
                       {c.status === 'extracted' && (
-                        <Link href={`/capture/${c.id}`} className="btn btn-secondary btn-sm">
-                          Check
+                        <Link href={`/capture/${c.id}`} className="btn btn-primary btn-sm">
+                          Check it
                         </Link>
                       )}
                       {(c.status === 'uploaded' || c.status === 'failed') && (
                         <ExtractTrigger captureId={c.id} label="Read" small />
                       )}
                       {c.status === 'approved' && (
-                        <Link href="/bills" className="small">Posted</Link>
+                        <Link href="/bills" className="btn btn-open btn-sm">Posted</Link>
                       )}
                     </td>
                   </tr>

@@ -102,7 +102,9 @@ export default async function DashboardPage() {
         <div className="card">
           <div className="card-head">
             <h2>Who owes what</h2>
-            <Link href="/reports/aged-debtors" className="small">Aged debtors</Link>
+            <Link href="/reports/aged-debtors" className="btn btn-open btn-sm">
+              Aged debtors
+            </Link>
           </div>
           <table className="table table-flush">
             <tbody>
@@ -131,7 +133,7 @@ export default async function DashboardPage() {
         <div className="card">
           <div className="card-head">
             <h2>Recent activity</h2>
-            <Link href="/journals" className="small">See all</Link>
+            <Link href="/journals" className="btn btn-open btn-sm">See all</Link>
           </div>
           {(recent || []).length === 0 ? (
             <div className="empty" style={{ padding: '2rem 1.25rem' }}>

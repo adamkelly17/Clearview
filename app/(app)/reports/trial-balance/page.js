@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import Link from 'next/link';
 import { requireOrg } from '@/lib/org';
 import { shortDate } from '@/lib/format';
 import Money from '@/components/Money';
@@ -69,20 +70,33 @@ export default async function TrialBalancePage({ searchParams }) {
                   <th>Account</th>
                   <th className="num" style={{ width: '9rem' }}>Debit</th>
                   <th className="num" style={{ width: '9rem' }}>Credit</th>
+                  <th style={{ width: '5.5rem' }} />
                 </tr>
               </thead>
               <tbody>
                 {groups.map((g) => (
                   <Fragment key={g.name}>
                     <tr className="row-group no-hover">
-                      <td colSpan={pro ? 4 : 3}>{g.name}</td>
+                      <td colSpan={pro ? 5 : 4}>{g.name}</td>
                     </tr>
                     {g.rows.map((r) => (
                       <tr key={r.account_id}>
                         {pro && <td className="code">{r.code}</td>}
-                        <td>{pro ? r.name : r.friendly_name}</td>
+                        <td>
+                          <Link href={`/accounts/${r.account_id}?to=${to}`} className="table-link">
+                            {pro ? r.name : r.friendly_name}
+                          </Link>
+                        </td>
                         <td><Money value={r.debit} blankZero /></td>
                         <td><Money value={r.credit} blankZero /></td>
+                        <td className="actions">
+                          <Link
+                            href={`/accounts/${r.account_id}?to=${to}`}
+                            className="btn btn-open btn-sm"
+                          >
+                            Open
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </Fragment>
@@ -93,6 +107,7 @@ export default async function TrialBalancePage({ searchParams }) {
                   <td colSpan={pro ? 2 : 1}>Total</td>
                   <td><Money value={totalDebit} /></td>
                   <td><Money value={totalCredit} /></td>
+                  <td />
                 </tr>
               </tfoot>
             </table>
