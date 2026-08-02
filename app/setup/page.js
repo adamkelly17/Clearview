@@ -155,8 +155,8 @@ export default function SetupPage() {
   return (
     <div className="setup">
       <div className="setup-inner">
-        <div style={{ marginBottom: '1.5rem' }}>
-          <Wordmark size={28} />
+        <div style={{ marginBottom: '1.75rem' }}>
+          <Wordmark height={38} />
         </div>
 
         <div className="setup-steps" role="progressbar" aria-valuenow={step + 1} aria-valuemin={1} aria-valuemax={STEPS.length}>

@@ -10,23 +10,36 @@
    ===================================================================== */
 
 :root {
-  --paper:        #FBFAF9;
+  /* Cooled off the original warm paper so the neutrals sit with the
+     navy instead of pulling yellow against it. */
+  --paper:        #FAFBFC;
   --surface:      #FFFFFF;
-  --surface-sunk: #F4F2EF;
-  --line:         #E4E1DC;
-  --line-strong:  #C9C4BC;
+  --surface-sunk: #F2F5F8;
+  --line:         #E2E7EE;
+  --line-strong:  #C4CCD9;
 
-  --ink:          #16202B;
-  --ink-soft:     #47535F;
-  --muted:        #7B8794;
-  --faint:        #A4ACB5;
+  /* Ink runs slightly blue so it sits with the navy rather than
+     fighting it. */
+  --ink:          #101A2E;
+  --ink-soft:     #414D63;
+  --muted:        #737F93;
+  --faint:        #A0A9B8;
 
-  --accent:       #0B5D4E;
-  --accent-hover: #094B3F;
-  --accent-wash:  #E8F0ED;
+  /* Sampled from the logo: navy #012877, cyan #02BFD5, mid blue
+     #006DBF. Navy does the structural work; cyan is reserved for
+     focus and selection so it stays as sharp as the tick in the mark. */
+  --accent:       #012877;
+  --accent-hover: #011B57;
+  --accent-wash:  #E8EDF8;
+  --accent-mid:   #006DBF;
 
-  --positive:     #14705A;
-  --negative:     #A6402F;
+  --highlight:      #02BFD5;
+  --highlight-wash: #E1F7FA;
+
+  /* Money keeps its own conventions. Green for gains, red for losses —
+     cooled slightly so they belong beside the navy. */
+  --positive:     #0E7C66;
+  --negative:     #B03A2E;
   --caution:      #9A6414;
   --caution-wash: #FBF3E4;
   --negative-wash:#FBECE9;
@@ -34,9 +47,9 @@
   --radius:       6px;
   --radius-lg:    10px;
 
-  --shadow-sm: 0 1px 2px rgba(22, 32, 43, 0.05);
-  --shadow-md: 0 4px 16px rgba(22, 32, 43, 0.08);
-  --shadow-lg: 0 12px 40px rgba(22, 32, 43, 0.12);
+  --shadow-sm: 0 1px 2px rgba(1, 40, 119, 0.06);
+  --shadow-md: 0 4px 16px rgba(1, 40, 119, 0.09);
+  --shadow-lg: 0 12px 40px rgba(1, 40, 119, 0.14);
 
   --sidebar-width: 232px;
 }
@@ -167,6 +180,7 @@ a:hover { text-decoration: underline; }
   background: var(--accent-wash);
   color: var(--accent);
   font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--highlight);
 }
 
 .sidebar-foot {
@@ -295,8 +309,8 @@ a:hover { text-decoration: underline; }
 }
 
 .input:focus, .select:focus, .textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-wash);
+  border-color: var(--highlight);
+  box-shadow: 0 0 0 3px var(--highlight-wash);
 }
 
 .input:disabled, .select:disabled { background: var(--surface-sunk); color: var(--muted); }
@@ -305,7 +319,7 @@ a:hover { text-decoration: underline; }
 
 .select {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%237B8794' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23737F93' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.6875rem center;
   padding-right: 2rem;
@@ -363,7 +377,7 @@ a:hover { text-decoration: underline; }
 
 .notice-error   { background: var(--negative-wash); border-color: #E9C4BC; color: #7C2D20; }
 .notice-caution { background: var(--caution-wash);  border-color: #E8D5AE; color: #7A4E0F; }
-.notice-info    { background: var(--accent-wash);   border-color: #C4DBD3; color: #084438; }
+.notice-info    { background: var(--accent-wash);   border-color: #C3D2EC; color: #01245F; }
 
 .pill {
   display: inline-block;
@@ -378,6 +392,7 @@ a:hover { text-decoration: underline; }
 }
 
 .pill-accent   { background: var(--accent-wash);   color: var(--accent); }
+.pill-highlight{ background: var(--highlight-wash); color: #046A78; }
 .pill-caution  { background: var(--caution-wash);  color: var(--caution); }
 .pill-negative { background: var(--negative-wash); color: var(--negative); }
 
@@ -530,7 +545,7 @@ a:hover { text-decoration: underline; }
   border-radius: 2px;
   background: var(--line);
 }
-.setup-step-done { background: var(--accent); }
+.setup-step-done { background: var(--highlight); }
 
 .choice-list { display: grid; gap: 0.5rem; }
 
@@ -553,7 +568,7 @@ a:hover { text-decoration: underline; }
 .choice-selected {
   border-color: var(--accent);
   background: var(--accent-wash);
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), inset 3px 0 0 var(--highlight);
 }
 
 .choice-title { font-weight: 600; font-size: 0.9375rem; }
@@ -607,15 +622,6 @@ a:hover { text-decoration: underline; }
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 2rem 1.5rem; }
 .auth-inner { width: 100%; max-width: 380px; }
 
-.auth-mark {
-  font-family: var(--font-mono), monospace;
-  font-size: 0.75rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 0.75rem;
-}
-
 /* --- Utilities ---------------------------------------------------- */
 
 .stack { display: flex; flex-direction: column; }
@@ -632,7 +638,7 @@ a:hover { text-decoration: underline; }
 .nowrap { white-space: nowrap; }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--highlight);
   outline-offset: 2px;
 }
 

@@ -1,7 +1,7 @@
 import { requireOrg } from '@/lib/org';
 import NavLink from '@/components/NavLink';
 import { shortDate } from '@/lib/format';
-import { LogoMark } from '@/components/Logo';
+import { Wordmark } from '@/components/Logo';
 
 export default async function AppLayout({ children }) {
   const { org, features, currentYear } = await requireOrg();
@@ -11,16 +11,8 @@ export default async function AppLayout({ children }) {
     <div className="shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="row" style={{ gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <LogoMark size={20} />
-            <span
-              style={{
-                fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.09em',
-                textTransform: 'uppercase', color: 'var(--muted)',
-              }}
-            >
-              Clearview
-            </span>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <Wordmark height={26} />
           </div>
           <div className="sidebar-org" title={org.name}>{org.name}</div>
           {currentYear && (

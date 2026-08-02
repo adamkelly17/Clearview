@@ -34,8 +34,8 @@ export default function LoginPage() {
   return (
     <div className="auth">
       <div className="auth-inner">
-        <Wordmark size={30} subtitle="Accounts" />
-        <div style={{ height: '1.25rem' }} />
+        <Wordmark height={42} />
+        <div style={{ height: '1.5rem' }} />
         <h1>{sent ? 'Check your email' : 'Sign in'}</h1>
 
         {sent ? (
