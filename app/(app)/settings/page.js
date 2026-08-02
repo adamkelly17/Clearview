@@ -2,6 +2,7 @@ import { requireOrg } from '@/lib/org';
 import { shortDate, MONTHS } from '@/lib/format';
 import FeatureToggles from './FeatureToggles';
 import PeriodList from './PeriodList';
+import YearEndControl from './YearEndControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,7 +67,10 @@ export default async function SettingsPage() {
       </div>
 
       <div className="card mt-lg">
-        <div className="card-head"><h2>Financial years</h2></div>
+        <div className="card-head">
+          <h2>Financial years</h2>
+          <YearEndControl year={currentYear} canEdit={canEdit} />
+        </div>
         <table className="table table-flush">
           <thead>
             <tr>
@@ -93,8 +97,9 @@ export default async function SettingsPage() {
         </table>
         <div className="card-body" style={{ paddingTop: '0.75rem' }}>
           <p className="hint">
-            The next year is created automatically when you close this one. The
-            year-end routine arrives with the reporting phase.
+            The next year is created automatically when you close this one.
+            Changing the year end here adds or removes months from the open
+            year and sets the pattern future years will follow.
           </p>
         </div>
       </div>
