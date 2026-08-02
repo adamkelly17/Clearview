@@ -52,6 +52,7 @@ export default async function BillsPage() {
           pro={features.accountant_mode}
           emptyTitle="No bills yet"
           emptyBody="Enter your first supplier invoice and it will appear here with what is still to pay."
+          editBase="/bills"
           newHref="/bills/new"
           newLabel="Enter a bill"
         />

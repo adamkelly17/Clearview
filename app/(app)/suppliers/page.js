@@ -79,7 +79,7 @@ export default async function SuppliersPage() {
                   <tr key={c.id}>
                     {pro && <td className="code">{c.code}</td>}
                     <td>
-                      {c.name}
+                      <Link href={`/suppliers/${c.id}`}>{c.name}</Link>
                       {!c.active && <> <span className="pill">Inactive</span></>}
                     </td>
                     <td className="muted small">{c.email || c.phone || ''}</td>

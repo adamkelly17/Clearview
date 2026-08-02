@@ -49,6 +49,7 @@ supabase/migrations/0011_fiscal_year.sql
 supabase/migrations/0012_capture.sql
 supabase/migrations/0013_banking.sql
 supabase/migrations/0014_void_and_vat.sql
+supabase/migrations/0015_edit_documents.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -104,9 +105,10 @@ psql -d ledgertest -f supabase/test/02_trading_test.sql
 psql -d ledgertest -f supabase/test/03_capture_test.sql
 psql -d ledgertest -f supabase/test/04_banking_test.sql
 psql -d ledgertest -f supabase/test/05_void_vat_test.sql
+psql -d ledgertest -f supabase/test/06_edit_test.sql
 ```
 
-A hundred and eighteen assertions across the five files. Each is independent — they can
+A hundred and forty-one assertions across the six files. Each is independent — they can
 be run in any order, repeatedly, against the same database.
 
 `01_ledger_test.sql` covers chart of accounts seeding, period generation,
@@ -316,6 +318,28 @@ invoices through a real model and counting the corrections before deciding
 this saves time on your particular post.
 
 
+
+## Editing is void and replace
+
+A posted document still cannot be altered. Editing one voids the original,
+reverses its journal, and posts a replacement — carrying the **same
+document number**, because the customer already has a piece of paper with
+that number on it and the numbering should not develop gaps. The
+uniqueness rule on document numbers therefore ignores voided documents.
+
+The two are linked in both directions and the original records "Replaced
+by INV0006 — wrong price agreed" against it. From the user's side it
+behaves like an edit; from an auditor's side it reads like a correction,
+which is what it is.
+
+Everything can change: contact, date, number, lines, categories, VAT
+treatment. The replacement is posted from scratch rather than patched, so
+there is no field quietly carried over and no partial update to get wrong.
+The original's lines survive too, so the superseded version can still be
+read.
+
+Same restriction as voiding: refused if anything has been settled against
+it.
 
 ## Nothing is ever deleted
 

@@ -10,7 +10,9 @@ const STATUS = {
 };
 
 /** Shared list for invoices, credit notes and bills. */
-export default function DocumentTable({ rows, pro, emptyTitle, emptyBody, newHref, newLabel }) {
+export default function DocumentTable({
+  rows, pro, emptyTitle, emptyBody, newHref, newLabel, editBase,
+}) {
   if (rows.length === 0) {
     return (
       <div className="empty">
@@ -32,7 +34,7 @@ export default function DocumentTable({ rows, pro, emptyTitle, emptyBody, newHre
           <th className="num" style={{ width: '8rem' }}>Total</th>
           <th className="num" style={{ width: '8rem' }}>Outstanding</th>
           <th style={{ width: '7.5rem' }}>Status</th>
-          <th style={{ width: '5rem', position: 'relative' }} />
+          <th style={{ width: '8.5rem', position: 'relative' }} />
         </tr>
       </thead>
       <tbody>
@@ -63,8 +65,11 @@ export default function DocumentTable({ rows, pro, emptyTitle, emptyBody, newHre
               <td><Money value={voided ? 0 : d.outstanding_amount || 0} blankZero /></td>
               <td>
                 {voided ? (
-                  <span className="pill pill-negative" title={d.void_reason || 'Voided'}>
-                    Voided
+                  <span
+                    className="pill pill-negative"
+                    title={d.void_reason || 'Voided'}
+                  >
+                    {d.void_reason?.startsWith('Replaced by') ? 'Replaced' : 'Voided'}
                   </span>
                 ) : (
                   <span className={`pill ${overdue ? 'pill-negative' : status.className}`}>
@@ -74,7 +79,14 @@ export default function DocumentTable({ rows, pro, emptyTitle, emptyBody, newHre
               </td>
               <td style={{ position: 'relative' }}>
                 {!voided && d.settlement_status === 'outstanding' && (
-                  <VoidButton documentId={d.id} number={d.number} />
+                  <span className="row" style={{ gap: '0.125rem' }}>
+                    {editBase && (
+                      <Link href={`${editBase}/${d.id}/edit`} className="btn btn-ghost btn-sm">
+                        Edit
+                      </Link>
+                    )}
+                    <VoidButton documentId={d.id} number={d.number} />
+                  </span>
                 )}
               </td>
             </tr>

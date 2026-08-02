@@ -52,6 +52,7 @@ export default async function InvoicesPage() {
           pro={features.accountant_mode}
           emptyTitle="No invoices yet"
           emptyBody="Raise your first invoice and it will appear here with what is still outstanding."
+          editBase="/invoices"
           newHref="/invoices/new"
           newLabel="Raise an invoice"
         />

@@ -1,19 +1,18 @@
 import { requireOrg } from '@/lib/org';
-import ContactPage from '@/components/ContactPage';
+import DocumentEditPage from '@/components/DocumentEditPage';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CustomerDetailPage({ params, searchParams }) {
+export default async function EditBillPage({ params }) {
   const { supabase, org, features } = await requireOrg();
 
   return (
-    <ContactPage
+    <DocumentEditPage
       supabase={supabase}
       org={org}
       features={features}
-      contactId={params.id}
-      kind="customer"
-      searchParams={searchParams}
+      documentId={params.id}
+      ledger="purchase"
     />
   );
 }

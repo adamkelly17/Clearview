@@ -3,7 +3,7 @@ import ContactPage from '@/components/ContactPage';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CustomerDetailPage({ params, searchParams }) {
+export default async function SupplierDetailPage({ params, searchParams }) {
   const { supabase, org, features } = await requireOrg();
 
   return (
@@ -12,7 +12,7 @@ export default async function CustomerDetailPage({ params, searchParams }) {
       org={org}
       features={features}
       contactId={params.id}
-      kind="customer"
+      kind="supplier"
       searchParams={searchParams}
     />
   );

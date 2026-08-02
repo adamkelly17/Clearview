@@ -253,6 +253,13 @@ a:hover { text-decoration: underline; }
 
 .table th.num { text-align: right; }
 
+/* A figure is an inline span, so text-align on the span itself does
+   nothing to where it sits in the cell — the cell has to be told. This
+   is what keeps every money column under its own heading. */
+.table td.num,
+.table td:has(> .num),
+.table tfoot td:has(> .num) { text-align: right; }
+
 .table td {
   padding: 0.625rem 0.75rem;
   border-bottom: 1px solid var(--line);

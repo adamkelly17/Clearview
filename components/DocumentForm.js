@@ -42,9 +42,13 @@ export default function DocumentForm({
   pro,
   vatEnabled,
   currencyCode,
+  /* When present, the form is editing rather than creating. Saving
+     voids the original and posts a replacement — see replace_document(). */
+  editing = null,
 }) {
   const router = useRouter();
   const cfg = CONFIG[docType];
+  const isEdit = Boolean(editing);
 
   /* Only ever default a VAT code when the business is actually VAT
      registered. Previously the column was hidden but the default code was
@@ -55,15 +59,27 @@ export default function DocumentForm({
 
   const usableVatCodes = vatEnabled ? vatCodes : [];
 
-  const [contactId, setContactId] = useState('');
-  const [date, setDate] = useState(today());
-  const [dueDate, setDueDate] = useState('');
-  const [number, setNumber] = useState('');
-  const [theirRef, setTheirRef] = useState('');
-  const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState([
-    { ...blankLine(), vat_code_id: defaultVat?.id || '' },
-  ]);
+  const [contactId, setContactId] = useState(editing?.contact_id || '');
+  const [date, setDate] = useState(editing?.date || today());
+  const [dueDate, setDueDate] = useState(editing?.due_date || '');
+  const [number, setNumber] = useState(editing?.number || '');
+  const [theirRef, setTheirRef] = useState(editing?.their_reference || '');
+  const [notes, setNotes] = useState(editing?.notes || '');
+  const [reason, setReason] = useState('');
+  const [lines, setLines] = useState(() => {
+    if (editing?.lines?.length) {
+      return editing.lines.map((l) => ({
+        key: Math.random().toString(36).slice(2),
+        description: l.description || '',
+        quantity: String(l.quantity ?? 1),
+        unit_price: String(l.unit_price ?? ''),
+        discount_percent: l.discount_percent ? String(l.discount_percent) : '',
+        account_id: l.account_id || '',
+        vat_code_id: vatEnabled ? l.vat_code_id || '' : '',
+      }));
+    }
+    return [{ ...blankLine(), vat_code_id: defaultVat?.id || '' }];
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -143,7 +159,8 @@ export default function DocumentForm({
   );
 
   const filled = lines.filter((l) => l.account_id && Number(l.unit_price));
-  const ready = contactId && date && filled.length > 0 && (!cfg.numbered || number.trim());
+  const ready =
+    contactId && date && filled.length > 0 && (!(cfg.numbered || isEdit) || number.trim());
 
   const update = (key, patch) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -166,26 +183,35 @@ export default function DocumentForm({
     setError(null);
 
     const supabase = createClient();
-    const { error } = await supabase.rpc('post_document', {
-      p_config: {
-        organisation_id: orgId,
-        doc_type: docType,
-        contact_id: contactId,
-        date,
-        due_date: dueDate || null,
-        number: cfg.numbered ? number.trim() : null,
-        their_reference: theirRef.trim() || null,
-        notes: notes.trim() || null,
-        lines: filled.map((l) => ({
-          description: l.description || 'Item',
-          quantity: Number(l.quantity) || 1,
-          unit_price: Number(l.unit_price) || 0,
-          discount_percent: Number(l.discount_percent) || 0,
-          account_id: l.account_id,
-          vat_code_id: vatEnabled ? l.vat_code_id || null : null,
-        })),
-      },
-    });
+
+    const config = {
+      organisation_id: orgId,
+      doc_type: docType,
+      contact_id: contactId,
+      date,
+      due_date: dueDate || null,
+      // When editing, the number is always editable so a correction can
+      // keep the number the customer already has.
+      number: cfg.numbered || isEdit ? number.trim() || null : null,
+      their_reference: theirRef.trim() || null,
+      notes: notes.trim() || null,
+      lines: filled.map((l) => ({
+        description: l.description || 'Item',
+        quantity: Number(l.quantity) || 1,
+        unit_price: Number(l.unit_price) || 0,
+        discount_percent: Number(l.discount_percent) || 0,
+        account_id: l.account_id,
+        vat_code_id: vatEnabled ? l.vat_code_id || null : null,
+      })),
+    };
+
+    const { error } = isEdit
+      ? await supabase.rpc('replace_document', {
+          p_document_id: editing.id,
+          p_config: config,
+          p_reason: reason.trim() || null,
+        })
+      : await supabase.rpc('post_document', { p_config: config });
 
     setBusy(false);
 
@@ -267,9 +293,11 @@ export default function DocumentForm({
           </div>
 
           <div className="grid grid-2" style={{ marginBottom: 0 }}>
-            {cfg.numbered && (
+            {(cfg.numbered || isEdit) && (
               <label className="field" style={{ marginBottom: 0 }}>
-                <span className="label">Their {cfg.title} number</span>
+                <span className="label">
+                  {cfg.numbered ? `Their ${cfg.title} number` : `${cfg.title} number`}
+                </span>
                 <input
                   className="input code"
                   value={number}
@@ -495,13 +523,39 @@ export default function DocumentForm({
         </div>
       )}
 
+      {isEdit && (
+        <div className="card mt-md">
+          <div className="card-body">
+            <label className="field" style={{ marginBottom: 0 }}>
+              <span className="label">
+                Why is it changing? <span className="muted">(optional)</span>
+              </span>
+              <input
+                className="input"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Wrong price agreed"
+              />
+              <span className="hint" style={{ display: 'block', marginTop: '0.375rem' }}>
+                Recorded against the original, which stays in the audit trail
+                marked as replaced by this one.
+              </span>
+            </label>
+          </div>
+        </div>
+      )}
+
       <div className="btn-row mt-md">
         <button className="btn btn-secondary" onClick={() => router.back()} disabled={busy}>
           Cancel
         </button>
         <div className="spacer" />
         <button className="btn btn-primary" onClick={post} disabled={!ready || busy}>
-          {busy ? 'Recording…' : `Record this ${cfg.title}`}
+          {busy
+            ? 'Saving…'
+            : isEdit
+            ? 'Save the correction'
+            : `Record this ${cfg.title}`}
         </button>
       </div>
 
@@ -509,7 +563,7 @@ export default function DocumentForm({
         <p className="hint mt-md">
           {!contactId
             ? `Choose a ${cfg.party.toLowerCase()} to continue.`
-            : cfg.numbered && !number.trim()
+            : (cfg.numbered || isEdit) && !number.trim()
             ? `Enter their ${cfg.title} number so you can match it up later.`
             : 'Add at least one line with a price and a category.'}
         </p>
