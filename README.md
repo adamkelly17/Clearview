@@ -50,6 +50,7 @@ supabase/migrations/0012_capture.sql
 supabase/migrations/0013_banking.sql
 supabase/migrations/0014_void_and_vat.sql
 supabase/migrations/0015_edit_documents.sql
+supabase/migrations/0016_bank_rules.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -387,6 +388,36 @@ transaction itself stays immutable, exactly as in phase 1.
 This is also why bank feeds will be a small piece of work rather than a
 rewrite. A feed writes to `statement_line` and everything downstream is
 already built.
+
+### The screen is split
+
+The bank's version of the transaction on the left, what Clearview will do
+with it on the right. Suggestions for every line are fetched in one call
+and shown immediately — nothing has to be opened to find out whether a
+match is waiting.
+
+The right-hand side is pre-filled from the best suggestion, so the common
+case is reading one line and pressing one button. Alternatives sit behind
+a single click and everything stays editable.
+
+### Rules are made from decisions
+
+Coding a line offers "do this automatically next time", with a pattern
+already suggested from the description. `suggest_rule_pattern()` strips
+the volatile tail — "EDF ENERGY DD 4471" becomes "EDF ENERGY", because a
+rule containing the direct debit number will never fire again. Leading
+markers like `DD`, `CARD PAYMENT TO` and `TFR TO` are skipped so the real
+name is found.
+
+The same function exists in SQL and in `lib/statement.js`, and the two are
+tested against the same cases. The interface needs one per row, and a
+round trip to compute a string would be absurd.
+
+As the pattern is edited, `preview_rule_matches()` reports how many other
+waiting lines it would catch — so the reach of a rule is visible before it
+is saved rather than discovered afterwards. Saving offers to apply it to
+those lines immediately, which is the difference between a rule saving
+time this month and next month.
 
 ### Matching, in order of trustworthiness
 

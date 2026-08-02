@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation';
 import { requireOrg } from '@/lib/org';
 import { money, shortDate } from '@/lib/format';
 import Money from '@/components/Money';
-import ReconcileList from './ReconcileList';
+import ReconcileSplit from './ReconcileSplit';
+import { suggestRulePattern } from '@/lib/statement';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,29 @@ export default async function BankAccountPage({ params, searchParams }) {
         .order('to_date', { ascending: false })
         .limit(5),
     ]);
+
+  /* Suggestions for every line on screen, in one round trip. The old
+     screen fetched them per row on expand, which meant you could not see
+     what was waiting without opening each one. */
+  const lineIds = (lines || []).map((l) => l.id);
+
+  const { data: suggestions } = lineIds.length && view === 'todo'
+    ? await supabase.rpc('suggest_matches_bulk', { p_line_ids: lineIds })
+    : { data: [] };
+
+  const suggestionsByLine = {};
+  for (const s of suggestions || []) {
+    (suggestionsByLine[s.statement_line_id] ||= []).push(s);
+  }
+
+  /* A starting pattern per line, so ticking "do this automatically" does
+     not begin with an empty box. Computed here rather than in the
+     database — it is a pure string function and one round trip per row
+     would be absurd. */
+  const withPatterns = (view === 'todo' ? lines || [] : []).map((l) => ({
+    ...l,
+    suggested_pattern: suggestRulePattern(l.description),
+  }));
 
   const r = (recon || [])[0] || {};
   const difference = Number(r.difference || 0);
@@ -155,8 +179,8 @@ export default async function BankAccountPage({ params, searchParams }) {
         </div>
       )}
 
-      <div className="card mt-md">
-        <div className="card-head">
+      <div className={view === 'todo' ? 'mt-md' : 'card mt-md'}>
+        <div className="card-head" style={view === 'todo' ? { padding: '0 0 0.75rem' } : undefined}>
           <div className="btn-row">
             {TABS.map(([key, label, count]) => (
               <Link
@@ -171,18 +195,7 @@ export default async function BankAccountPage({ params, searchParams }) {
           </div>
         </div>
 
-        {view === 'todo' ? (
-          <ReconcileList
-            lines={lines || []}
-            orgId={org.id}
-            accounts={accounts || []}
-            vatCodes={vatCodes || []}
-            contacts={contacts || []}
-            bankAccounts={banks || []}
-            pro={pro}
-            currencyCode={org.base_currency_code}
-          />
-        ) : (lines || []).length === 0 ? (
+        {view === 'todo' ? null : (lines || []).length === 0 ? (
           <div className="empty" style={{ padding: '2.5rem 1.5rem' }}>
             <p>Nothing here.</p>
           </div>
@@ -217,6 +230,21 @@ export default async function BankAccountPage({ params, searchParams }) {
               ))}
             </tbody>
           </table>
+        )}
+
+        {view === 'todo' && (
+          <ReconcileSplit
+            lines={withPatterns}
+            suggestionsByLine={suggestionsByLine}
+            orgId={org.id}
+            bankAccountId={bank.id}
+            accounts={accounts || []}
+            vatCodes={vatCodes || []}
+            contacts={contacts || []}
+            bankAccounts={banks || []}
+            pro={pro}
+            vatEnabled={features.vat_enabled}
+          />
         )}
       </div>
 

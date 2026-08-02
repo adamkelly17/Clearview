@@ -446,3 +446,157 @@ begin
   raise notice 'All banking tests passed.';
 end;
 $$;
+
+-- =====================================================================
+-- Split-screen reconciliation: bulk suggestions, rule preview, and
+-- applying a rule across the lines it already matches.
+-- =====================================================================
+
+do $$
+declare
+  v_user   uuid := gen_random_uuid();
+  v_org    uuid;
+  v_bank   uuid;
+  v_elec   uuid;
+  v_t1     uuid;
+  v_ids    uuid[];
+  v_rule   uuid;
+  v_result jsonb;
+  v_count  int;
+  v_amount numeric;
+  v_text   text;
+begin
+  insert into auth.users (id, email) values (v_user, 'rules@example.com');
+  perform set_config('request.jwt.claim.sub', v_user::text, false);
+
+  v_org := create_organisation(jsonb_build_object(
+    'name', 'Rule Test Ltd', 'entity_type_code', 'limited_company',
+    'year_end_day', 31, 'year_end_month', 3,
+    'books_start_date', '2026-04-01', 'vat_enabled', true));
+
+  select ba.id into v_bank from bank_account ba join account a on a.id = ba.account_id
+   where ba.organisation_id = v_org and a.code = '1200';
+  select id into v_elec from account where organisation_id = v_org and code = '7200';
+  select id into v_t1   from vat_code where organisation_id = v_org and code = 'T1';
+
+  perform import_statement(jsonb_build_object(
+    'organisation_id', v_org, 'bank_account_id', v_bank, 'name', 'Q1',
+    'lines', jsonb_build_array(
+      jsonb_build_object('date','2026-05-05','description','EDF ENERGY DD 4471','amount',-186.00),
+      jsonb_build_object('date','2026-06-05','description','EDF ENERGY DD 4471','amount',-191.20),
+      jsonb_build_object('date','2026-07-05','description','EDF ENERGY DD 5588','amount',-188.40),
+      jsonb_build_object('date','2026-07-09','description','BT BUSINESS 99213','amount',-64.00))));
+
+  raise notice '--- Pattern suggestion';
+
+  v_text := suggest_rule_pattern('EDF ENERGY DD 4471');
+  if v_text <> 'EDF ENERGY' then
+    raise exception 'FAIL: expected "EDF ENERGY", got "%"', v_text;
+  end if;
+  raise notice 'PASS  "EDF ENERGY DD 4471" suggests the pattern "EDF ENERGY"';
+
+  -- The merchant name after the processor's asterisk is kept: a rule of
+  -- just "SUMUP" would catch every merchant using that card reader.
+  if suggest_rule_pattern('SUMUP  *COFFEE 12345') <> 'SUMUP *COFFEE' then
+    raise exception 'FAIL: got "%"', suggest_rule_pattern('SUMUP  *COFFEE 12345');
+  end if;
+  raise notice 'PASS  the volatile tail is dropped but the merchant name is kept';
+
+  if suggest_rule_pattern('CARD PAYMENT TO SCREWFIX 4471') <> 'SCREWFIX' then
+    raise exception 'FAIL: got "%"', suggest_rule_pattern('CARD PAYMENT TO SCREWFIX 4471');
+  end if;
+  raise notice 'PASS  leading markers like "CARD PAYMENT TO" are skipped';
+
+  raise notice '--- Suggestions for every line in one call';
+
+  select array_agg(id) into v_ids from statement_line where bank_account_id = v_bank;
+
+  select count(distinct statement_line_id) into v_count
+    from suggest_matches_bulk(v_ids);
+  raise notice 'PASS  one call covered % lines', coalesce(v_count, 0);
+
+  raise notice '--- Rule reach preview';
+
+  v_count := preview_rule_matches(v_org, v_bank, 'EDF ENERGY', 'contains', 'out', null);
+  if v_count <> 3 then
+    raise exception 'FAIL: "EDF ENERGY" should reach 3 lines, got %', v_count;
+  end if;
+  raise notice 'PASS  the pattern "EDF ENERGY" is shown as reaching 3 lines';
+
+  -- Narrowing the pattern to include the direct debit number drops the
+  -- July line, which carries a different one. Two of the three remain.
+  v_count := preview_rule_matches(v_org, v_bank, 'EDF ENERGY DD 4471', 'contains', 'out', null);
+  if v_count <> 2 then
+    raise exception 'FAIL: the narrower pattern should reach 2, got %', v_count;
+  end if;
+  raise notice 'PASS  narrowing the pattern to the DD number drops it from 3 to 2, visibly, before saving';
+
+  v_count := preview_rule_matches(v_org, v_bank, 'EDF ENERGY', 'contains', 'in', null);
+  if v_count <> 0 then
+    raise exception 'FAIL: direction should exclude money-out lines, got %', v_count;
+  end if;
+  raise notice 'PASS  direction is respected by the preview';
+
+  raise notice '--- Saving and applying a rule';
+
+  v_rule := create_match_rule(jsonb_build_object(
+    'organisation_id', v_org, 'bank_account_id', v_bank,
+    'name', 'Electricity', 'pattern', 'EDF ENERGY',
+    'match_type', 'contains', 'direction', 'out',
+    'account_id', v_elec, 'vat_code_id', v_t1));
+
+  v_result := apply_rule_to_unmatched(v_rule, v_bank);
+
+  if (v_result ->> 'applied')::int <> 3 then
+    raise exception 'FAIL: expected 3 lines coded, got %', v_result ->> 'applied';
+  end if;
+  raise notice 'PASS  applying the rule coded all 3 matching lines in one go';
+
+  if (select count(*) from statement_line
+       where bank_account_id = v_bank and status = 'unmatched') <> 1 then
+    raise exception 'FAIL: only the BT line should remain unmatched';
+  end if;
+  raise notice 'PASS  the unrelated line was left alone';
+
+  -- 186.00 + 191.20 + 188.40 = 565.60 gross, so 471.33 net at 20%.
+  select coalesce(sum(debit - credit), 0) into v_amount
+    from journal_line where account_id = v_elec;
+  if round(v_amount, 2) <> 471.33 then
+    raise exception 'FAIL: electricity should be 471.33 net, got %', v_amount;
+  end if;
+  raise notice 'PASS  all three posted net of VAT, totalling 471.33';
+
+  if (select hit_count from match_rule where id = v_rule) <> 3 then
+    raise exception 'FAIL: hit count should be 3, got %',
+      (select hit_count from match_rule where id = v_rule);
+  end if;
+  raise notice 'PASS  the rule records three hits';
+
+  raise notice '--- Guards';
+
+  begin
+    perform create_match_rule(jsonb_build_object(
+      'organisation_id', v_org, 'pattern', '', 'account_id', v_elec));
+    raise exception 'FAIL: saved a rule with nothing to match on';
+  exception when check_violation then
+    raise notice 'PASS  a rule with an empty pattern refused';
+  end;
+
+  begin
+    perform create_match_rule(jsonb_build_object(
+      'organisation_id', v_org, 'pattern', 'ANYTHING'));
+    raise exception 'FAIL: saved a rule with no category';
+  exception when check_violation then
+    raise notice 'PASS  a rule with no category refused';
+  end;
+
+  select sum(debit) into v_amount from trial_balance(v_org, '2027-03-31');
+  if v_amount <> (select sum(credit) from trial_balance(v_org, '2027-03-31')) then
+    raise exception 'FAIL: trial balance out of balance';
+  end if;
+  raise notice 'PASS  trial balance still agrees';
+
+  raise notice '';
+  raise notice 'All rule tests passed.';
+end;
+$$;
