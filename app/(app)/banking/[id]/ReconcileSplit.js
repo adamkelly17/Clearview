@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { money, readableError, shortDate } from '@/lib/format';
@@ -18,11 +18,30 @@ import { money, readableError, shortDate } from '@/lib/format';
  * still editable, and the alternatives are one click away.
  */
 
-const KIND_LABELS = {
-  journal_line: 'Already recorded',
-  ledger_item: 'Unpaid invoice',
-  rule: 'Saved rule',
-};
+/**
+ * What the suggestion proposes to DO, not what it found.
+ *
+ * "Unpaid invoice" describes the thing; "pay off supplier invoice"
+ * describes what pressing Accept will do, which is the only thing the
+ * reader actually needs to decide about.
+ */
+function suggestionLabel(kind, isIn) {
+  if (kind === 'journal_line') return 'Suggested: match to a transaction already recorded';
+  if (kind === 'ledger_item') {
+    return isIn
+      ? 'Suggested: settle customer invoice'
+      : 'Suggested: pay off supplier invoice';
+  }
+  if (kind === 'rule') return 'Suggested: apply your saved rule';
+  return 'Suggested';
+}
+
+function shortKindLabel(kind, isIn) {
+  if (kind === 'journal_line') return 'Already recorded';
+  if (kind === 'ledger_item') return isIn ? 'Customer invoice' : 'Supplier invoice';
+  if (kind === 'rule') return 'Saved rule';
+  return kind;
+}
 
 const MODES = [
   ['nominal', 'Category'],
@@ -57,6 +76,63 @@ function Line({
     description: line.description,
     to_bank_account_id: '',
   });
+
+  /* Outstanding items for the chosen contact, and what is being put
+     against each. Chosen deliberately rather than swept oldest-first —
+     when you are looking at one payment on a bank statement you usually
+     know exactly which invoice it settles. */
+  const [items, setItems] = useState([]);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [alloc, setAlloc] = useState({});
+
+  useEffect(() => {
+    if (mode !== 'settle' || !form.contact_id) {
+      setItems([]);
+      setAlloc({});
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingItems(true);
+
+    createClient()
+      .from('ledger_item_outstanding')
+      .select('id, date, due_date, reference, item_type, outstanding_amount, days_overdue')
+      .eq('organisation_id', orgId)
+      .eq('contact_id', form.contact_id)
+      .eq('ledger', isIn ? 'sales' : 'purchase')
+      .eq('direction', isIn ? 'debit' : 'credit')
+      .gt('outstanding_amount', 0)
+      .order('due_date', { nullsFirst: false })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const rows = data || [];
+        setItems(rows);
+        setLoadingItems(false);
+
+        // An exact match for the whole payment is almost certainly the
+        // right answer, so fill it in rather than making them do it.
+        const exact = rows.find(
+          (r) => Math.abs(Number(r.outstanding_amount) - gross) < 0.005
+        );
+        setAlloc(exact ? { [exact.id]: gross.toFixed(2) } : {});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, form.contact_id, orgId, isIn, gross]);
+
+  const allocated = useMemo(
+    () =>
+      Math.round(
+        Object.values(alloc).reduce((s, v) => s + (Number(v) || 0), 0) * 100
+      ) / 100,
+    [alloc]
+  );
+
+  const onAccount = Math.round((gross - allocated) * 100) / 100;
+  const overAllocated = allocated > gross + 0.005;
 
   const [rule, setRule] = useState({
     save: false,
@@ -120,7 +196,13 @@ function Line({
       mode === 'transfer'
         ? { kind: 'transfer', to_bank_account_id: form.to_bank_account_id }
         : mode === 'settle'
-        ? { kind: 'settle', contact_id: form.contact_id, auto_allocate: true }
+        ? {
+            kind: 'settle',
+            contact_id: form.contact_id,
+            allocations: Object.entries(alloc)
+              .filter(([, v]) => Number(v) > 0)
+              .map(([item_id, v]) => ({ item_id, amount: Number(v) })),
+          }
         : {
             kind: 'nominal',
             account_id: form.account_id,
@@ -180,7 +262,7 @@ function Line({
     mode === 'transfer'
       ? Boolean(form.to_bank_account_id)
       : mode === 'settle'
-      ? Boolean(form.contact_id)
+      ? Boolean(form.contact_id) && !overAllocated
       : Boolean(form.account_id);
 
   const showSuggestion = best && !manual;
@@ -209,7 +291,7 @@ function Line({
             <div className="recon-suggestion">
               <div style={{ flex: 1, minWidth: 0 }}>
                 <span className={`pill ${best.score >= 0.9 ? 'pill-accent' : 'pill-caution'}`}>
-                  {KIND_LABELS[best.kind] || best.kind}
+                  {suggestionLabel(best.kind, isIn)}
                 </span>
                 <div className="recon-suggestion-label">{best.label}</div>
                 <div className="hint">
@@ -255,7 +337,7 @@ function Line({
               alternatives.map((s, i) => (
                 <div className="recon-alt" key={`${s.kind}-${s.ref_id}-${i}`}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span className="pill">{KIND_LABELS[s.kind] || s.kind}</span>{' '}
+                    <span className="pill">{shortKindLabel(s.kind, isIn)}</span>{' '}
                     <strong className="small">{s.label}</strong>
                     <div className="hint">{s.detail}</div>
                   </div>
@@ -412,24 +494,133 @@ function Line({
             )}
 
             {mode === 'settle' && (
-              <label className="field" style={{ marginBottom: 0 }}>
-                <span className="label">{isIn ? 'Which customer paid?' : 'Which supplier?'}</span>
-                <select
-                  className="select"
-                  value={form.contact_id}
-                  onChange={(e) => set({ contact_id: e.target.value })}
-                >
-                  <option value="">Choose…</option>
-                  {contacts
-                    .filter((c) => (isIn ? c.is_customer : c.is_supplier))
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                </select>
-                <span className="hint" style={{ display: 'block', marginTop: '0.375rem' }}>
-                  Settles their oldest unpaid items first. Anything left sits on account.
-                </span>
-              </label>
+              <>
+                <label className="field" style={{ marginBottom: form.contact_id ? '0.875rem' : 0 }}>
+                  <span className="label">
+                    {isIn ? 'Which customer paid?' : 'Which supplier?'}
+                  </span>
+                  <select
+                    className="select"
+                    value={form.contact_id}
+                    onChange={(e) => set({ contact_id: e.target.value })}
+                  >
+                    <option value="">Choose…</option>
+                    {contacts
+                      .filter((c) => (isIn ? c.is_customer : c.is_supplier))
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                  </select>
+                </label>
+
+                {form.contact_id && loadingItems && (
+                  <p className="hint">Looking up what is outstanding…</p>
+                )}
+
+                {form.contact_id && !loadingItems && items.length === 0 && (
+                  <div className="notice notice-caution" style={{ marginBottom: 0 }}>
+                    Nothing outstanding for them. The whole {money(gross)} will sit
+                    on account until there is something to match it against.
+                  </div>
+                )}
+
+                {form.contact_id && !loadingItems && items.length > 0 && (
+                  <>
+                    <span className="label">
+                      {isIn ? 'What is this paying?' : 'Which invoices does this pay?'}
+                    </span>
+
+                    <table className="alloc-table">
+                      <thead>
+                        <tr>
+                          <th>Reference</th>
+                          <th style={{ width: '6.5rem' }}>Due</th>
+                          <th className="num" style={{ width: '6.5rem' }}>Outstanding</th>
+                          <th className="num" style={{ width: '7rem' }}>Put against</th>
+                          <th style={{ width: '3rem' }} />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item) => {
+                          const remaining =
+                            Math.round((gross - allocated + (Number(alloc[item.id]) || 0)) * 100) / 100;
+                          const fill = Math.min(remaining, Number(item.outstanding_amount));
+
+                          return (
+                            <tr key={item.id}>
+                              <td>
+                                <span className="code small">
+                                  {item.reference || item.item_type}
+                                </span>
+                                <div className="hint">{shortDate(item.date)}</div>
+                              </td>
+                              <td className="small nowrap">
+                                {item.due_date ? shortDate(item.due_date) : ''}
+                                {item.days_overdue > 0 && (
+                                  <> <span className="pill pill-negative">{item.days_overdue}d</span></>
+                                )}
+                              </td>
+                              <td className="num">
+                                <span className="num">{money(item.outstanding_amount)}</span>
+                              </td>
+                              <td>
+                                <input
+                                  className="input num"
+                                  inputMode="decimal"
+                                  style={{ padding: '0.3125rem 0.5rem' }}
+                                  value={alloc[item.id] || ''}
+                                  placeholder="0.00"
+                                  onChange={(e) =>
+                                    setAlloc((a) => ({ ...a, [item.id]: e.target.value }))
+                                  }
+                                />
+                              </td>
+                              <td>
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  disabled={fill <= 0}
+                                  title="Put as much of this payment against it as will fit"
+                                  onClick={() =>
+                                    setAlloc((a) => ({ ...a, [item.id]: fill.toFixed(2) }))
+                                  }
+                                >
+                                  Fill
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+
+                    <div
+                      className={`notice ${
+                        overAllocated
+                          ? 'notice-error'
+                          : onAccount > 0
+                          ? 'notice-caution'
+                          : 'notice-info'
+                      }`}
+                      style={{ marginTop: '0.75rem', marginBottom: 0 }}
+                    >
+                      {overAllocated ? (
+                        <>
+                          You have put {money(allocated)} against invoices but the
+                          payment is only {money(gross)}. Reduce one of them.
+                        </>
+                      ) : onAccount > 0 ? (
+                        <>
+                          {money(allocated)} allocated. The remaining{' '}
+                          <strong>{money(onAccount)}</strong> will sit on account
+                          and can be matched later.
+                        </>
+                      ) : (
+                        <>The whole {money(gross)} is allocated.</>
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
             )}
 
             {mode === 'transfer' && (

@@ -400,6 +400,23 @@ The right-hand side is pre-filled from the best suggestion, so the common
 case is reading one line and pressing one button. Alternatives sit behind
 a single click and everything stays editable.
 
+Suggestions are labelled by what accepting them will *do* — "Suggested:
+pay off supplier invoice" rather than "Unpaid invoice". The reader is
+deciding about an action, not identifying an object.
+
+### Payments go against the invoice you choose
+
+Picking a contact lists their outstanding items with an amount box
+against each. Nothing is swept oldest-first: when you are looking at one
+payment on a bank statement you usually know exactly which invoice it
+settles, and guessing wrong quietly mis-states two accounts rather than
+one.
+
+If the payment exactly matches a single outstanding item, that one is
+filled in automatically — the common case still takes one click. Anything
+left unallocated sits on account rather than being forced somewhere it
+does not belong.
+
 ### Rules are made from decisions
 
 Coding a line offers "do this automatically next time", with a pattern

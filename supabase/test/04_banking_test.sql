@@ -600,3 +600,134 @@ begin
   raise notice 'All rule tests passed.';
 end;
 $$;
+
+-- =====================================================================
+-- Allocating a bank payment to a chosen invoice.
+--
+-- The point of this one: when two invoices are outstanding and the
+-- payment could settle either, the one the user picked must be settled —
+-- not the oldest.
+-- =====================================================================
+
+do $$
+declare
+  v_user   uuid := gen_random_uuid();
+  v_org    uuid;
+  v_bank   uuid;
+  v_supp   uuid;
+  v_cost   uuid;
+  v_t9     uuid;
+  v_old    uuid;   -- ledger_item of the older bill
+  v_new    uuid;   -- ledger_item of the newer bill
+  v_line   uuid;
+  v_amount numeric;
+begin
+  insert into auth.users (id, email) values (v_user, 'alloc@example.com');
+  perform set_config('request.jwt.claim.sub', v_user::text, false);
+
+  v_org := create_organisation(jsonb_build_object(
+    'name', 'Allocation Test Ltd', 'entity_type_code', 'limited_company',
+    'year_end_day', 31, 'year_end_month', 3,
+    'books_start_date', '2026-04-01', 'vat_enabled', false));
+
+  select ba.id into v_bank from bank_account ba join account a on a.id = ba.account_id
+   where ba.organisation_id = v_org and a.code = '1200';
+  select id into v_cost from account where organisation_id = v_org and code = '5000';
+
+  v_supp := create_contact(jsonb_build_object(
+    'organisation_id', v_org, 'name', 'Amazon', 'is_supplier', true));
+
+  -- Two bills for the same amount, a month apart.
+  perform post_document(jsonb_build_object(
+    'organisation_id', v_org, 'doc_type', 'PI', 'contact_id', v_supp,
+    'date', '2026-04-10', 'number', 'AMZ-001',
+    'lines', jsonb_build_array(jsonb_build_object(
+      'description', 'Older order', 'quantity', 1, 'unit_price', 34.99,
+      'account_id', v_cost))));
+
+  perform post_document(jsonb_build_object(
+    'organisation_id', v_org, 'doc_type', 'PI', 'contact_id', v_supp,
+    'date', '2026-05-10', 'number', 'AMZ-002',
+    'lines', jsonb_build_array(jsonb_build_object(
+      'description', 'Newer order', 'quantity', 1, 'unit_price', 34.99,
+      'account_id', v_cost))));
+
+  select ledger_item_id into v_old from document where organisation_id = v_org and number = 'AMZ-001';
+  select ledger_item_id into v_new from document where organisation_id = v_org and number = 'AMZ-002';
+
+  perform import_statement(jsonb_build_object(
+    'organisation_id', v_org, 'bank_account_id', v_bank, 'name', 'May',
+    'lines', jsonb_build_array(
+      jsonb_build_object('date','2026-05-20',
+        'description','AMZNMktplace*NI13J CD 9816','amount', -34.99))));
+
+  select id into v_line from statement_line where bank_account_id = v_bank;
+
+  raise notice '--- Allocating to a chosen invoice';
+
+  -- Deliberately settle the NEWER bill.
+  perform create_from_statement_line(v_line, jsonb_build_object(
+    'kind', 'settle',
+    'contact_id', v_supp,
+    'allocations', jsonb_build_array(
+      jsonb_build_object('item_id', v_new, 'amount', 34.99))));
+
+  select outstanding_amount into v_amount from ledger_item_outstanding where id = v_new;
+  if v_amount <> 0 then
+    raise exception 'FAIL: the chosen invoice should be settled, % left', v_amount;
+  end if;
+  raise notice 'PASS  the invoice that was chosen is settled';
+
+  select outstanding_amount into v_amount from ledger_item_outstanding where id = v_old;
+  if v_amount <> 34.99 then
+    raise exception 'FAIL: the older invoice should be untouched, but has % outstanding', v_amount;
+  end if;
+  raise notice 'PASS  the older invoice was left alone — no oldest-first sweep';
+
+  if (select status from statement_line where id = v_line) <> 'matched' then
+    raise exception 'FAIL: the statement line was not reconciled';
+  end if;
+  raise notice 'PASS  the bank line is reconciled in the same step';
+
+  raise notice '--- Part allocation leaves the rest on account';
+
+  perform import_statement(jsonb_build_object(
+    'organisation_id', v_org, 'bank_account_id', v_bank, 'name', 'June',
+    'lines', jsonb_build_array(
+      jsonb_build_object('date','2026-06-20','description','AMAZON PAYMENT','amount', -50.00))));
+
+  select id into v_line from statement_line
+   where bank_account_id = v_bank and description = 'AMAZON PAYMENT';
+
+  -- Put only 20.00 of a 50.00 payment against the remaining bill.
+  perform create_from_statement_line(v_line, jsonb_build_object(
+    'kind', 'settle', 'contact_id', v_supp,
+    'allocations', jsonb_build_array(
+      jsonb_build_object('item_id', v_old, 'amount', 20.00))));
+
+  select outstanding_amount into v_amount from ledger_item_outstanding where id = v_old;
+  if v_amount <> 14.99 then
+    raise exception 'FAIL: 34.99 less 20.00 should leave 14.99, got %', v_amount;
+  end if;
+  raise notice 'PASS  a part allocation leaves 14.99 outstanding on that invoice';
+
+  select coalesce(sum(outstanding_amount), 0) into v_amount
+    from ledger_item_outstanding
+   where organisation_id = v_org and item_type = 'payment' and direction = 'debit';
+  if v_amount <> 30.00 then
+    raise exception 'FAIL: 30.00 of the payment should sit on account, got %', v_amount;
+  end if;
+  raise notice 'PASS  the unallocated 30.00 sits on account rather than being forced somewhere';
+
+  select coalesce(sum(jl.credit - jl.debit), 0) into v_amount
+    from journal_line jl join account a on a.id = jl.account_id
+   where jl.organisation_id = v_org and a.control_type = 'creditors';
+  if v_amount <> -15.01 then
+    raise exception 'FAIL: creditors should be -15.01 (34.99+34.99 less 34.99 less 50.00), got %', v_amount;
+  end if;
+  raise notice 'PASS  trade creditors reflects the overpayment at -15.01';
+
+  raise notice '';
+  raise notice 'All allocation tests passed.';
+end;
+$$;

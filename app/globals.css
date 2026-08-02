@@ -465,6 +465,10 @@ a:hover {
   white-space: nowrap;
 }
 
+/* The suggestion header is a sentence rather than a tag, so it is
+   allowed to wrap on a narrow panel. */
+.recon-suggestion .pill { white-space: normal; }
+
 .pill-accent   { background: var(--accent-wash);   color: var(--accent); }
 .pill-highlight{ background: var(--highlight-wash); color: #046A78; }
 .pill-caution  { background: var(--caution-wash);  color: var(--caution); }
@@ -1007,3 +1011,39 @@ a:hover {
 @media (max-width: 620px) {
   .recon-suggestion { flex-direction: column; align-items: stretch; }
 }
+
+/* --- Allocation grid inside the reconciliation pane ---------------- */
+
+.alloc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  margin-top: 0.375rem;
+}
+
+.alloc-table th {
+  text-align: left;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0 0.5rem 0.375rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.alloc-table th.num { text-align: right; }
+
+.alloc-table td {
+  padding: 0.4375rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.alloc-table td.num,
+.alloc-table td:has(> .num) { text-align: right; }
+
+.alloc-table tbody tr:last-child td { border-bottom: none; }
+.alloc-table td:first-child { padding-left: 0; }
+.alloc-table td:last-child { padding-right: 0; text-align: right; }
+.alloc-table input.num { text-align: right; }
