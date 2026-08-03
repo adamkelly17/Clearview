@@ -32,6 +32,7 @@ export default async function NewBillPage({ searchParams }) {
         pro={features.accountant_mode}
         vatEnabled={features.vat_enabled}
         currencyCode={org.base_currency_code}
+        initialContactId={searchParams?.contact || null}
       />
     </div>
   );

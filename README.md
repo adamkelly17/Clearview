@@ -56,6 +56,7 @@ supabase/migrations/0018_next_year.sql
 supabase/migrations/0019_undo_and_reallocate.sql
 supabase/migrations/0020_smarter_capture.sql
 supabase/migrations/0021_overview.sql
+supabase/migrations/0022_contact_reports.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -367,6 +368,36 @@ invoices through a real model and counting the corrections before deciding
 this saves time on your particular post.
 
 
+
+## The customer and supplier lists
+
+Both screens read `contact_summary()`, which returns amounts **and counts**
+per contact: total due, how many invoices that is, how much is overdue, how
+many invoices that is, the ageing buckets, and the age of the oldest item.
+"£4,200 overdue" and "£4,200 overdue across eleven invoices" call for quite
+different phone calls.
+
+Contacts with nothing outstanding still appear, at nil, rather than
+vanishing from a list of customers.
+
+Every column sorts, and the sort lives in the URL — so a sorted view can be
+bookmarked, shared, and survives a refresh after recording something.
+
+### Reports
+
+Three Excel downloads, built in the browser with SheetJS:
+
+- **Summary with ageing** — one row per contact, balance in each period,
+  with a totals row because the first thing anyone does is check it against
+  the control account.
+- **All outstanding** — one row per invoice, with the ageing bucket as a
+  label as well as a day count, so it can be pivoted without anyone
+  rebuilding the bucket logic in Excel and getting it subtly different.
+- **Overdue only** — the same, filtered.
+
+All three read the same functions the screen reads. A report that disagrees
+with the screen it came from is worse than no report, and the test asserts
+that the summary, the detail and trade debtors all reach the same figure.
 
 ## The overview
 

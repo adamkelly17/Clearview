@@ -4,7 +4,7 @@ import PaymentForm from '@/components/PaymentForm';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ReceiptPage() {
+export default async function ReceiptPage({ searchParams }) {
   const { supabase, org, features } = await requireOrg();
   const { contacts, bankAccounts } = await loadTradingLookups(supabase, org.id, { ledger: 'sales' });
 
@@ -27,6 +27,7 @@ export default async function ReceiptPage() {
         bankAccounts={bankAccounts}
         pro={features.accountant_mode}
         currencyCode={org.base_currency_code}
+        initialContactId={searchParams?.contact || null}
       />
     </div>
   );

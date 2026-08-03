@@ -178,3 +178,183 @@ begin
   raise notice 'All overview tests passed.';
 end;
 $$;
+
+-- =====================================================================
+-- The customer and supplier list figures, and the reports built from
+-- them. The list and the summary report share one function, so they
+-- cannot disagree — this checks the arithmetic behind both.
+-- =====================================================================
+
+do $$
+declare
+  v_user uuid := gen_random_uuid();
+  v_org uuid; v_c1 uuid; v_c2 uuid; v_c3 uuid; v_sales uuid; v_bank uuid;
+  v_r record; v_n numeric; v_c int; v_item uuid;
+begin
+  insert into auth.users (id, email) values (v_user, 'lists@example.com');
+  perform set_config('request.jwt.claim.sub', v_user::text, false);
+
+  v_org := create_organisation(jsonb_build_object(
+    'name','List Test Ltd','entity_type_code','limited_company',
+    'year_end_day',31,'year_end_month',3,
+    'books_start_date','2026-01-01','vat_enabled',false));
+
+  select id into v_sales from account where organisation_id=v_org and code='4000';
+  select id into v_bank  from account where organisation_id=v_org and code='1200';
+
+  v_c1 := create_contact(jsonb_build_object('organisation_id',v_org,
+    'name','Hartley Developments','is_customer',true,'credit_limit',5000));
+  v_c2 := create_contact(jsonb_build_object('organisation_id',v_org,
+    'name','Quiet Co','is_customer',true));
+  v_c3 := create_contact(jsonb_build_object('organisation_id',v_org,
+    'name','Prompt Payers','is_customer',true));
+
+  -- Hartley: one very old, one mid-aged, one not yet due.
+  perform post_document(jsonb_build_object('organisation_id',v_org,'doc_type','SI',
+    'contact_id',v_c1,'date','2026-01-05','due_date','2026-01-20',
+    'lines',jsonb_build_array(jsonb_build_object(
+      'description','Old','quantity',1,'unit_price',1000,'account_id',v_sales))));
+  perform post_document(jsonb_build_object('organisation_id',v_org,'doc_type','SI',
+    'contact_id',v_c1,'date','2026-06-01','due_date','2026-07-01',
+    'lines',jsonb_build_array(jsonb_build_object(
+      'description','Mid','quantity',1,'unit_price',2000,'account_id',v_sales))));
+  perform post_document(jsonb_build_object('organisation_id',v_org,'doc_type','SI',
+    'contact_id',v_c1,'date','2026-08-01','due_date','2027-12-31',
+    'lines',jsonb_build_array(jsonb_build_object(
+      'description','Not yet due','quantity',1,'unit_price',3000,'account_id',v_sales))));
+
+  -- Prompt Payers: raised and settled, so should show nil.
+  perform post_document(jsonb_build_object('organisation_id',v_org,'doc_type','SI',
+    'contact_id',v_c3,'date','2026-03-01','lines',jsonb_build_array(jsonb_build_object(
+      'description','Paid','quantity',1,'unit_price',400,'account_id',v_sales))));
+  perform post_payment(jsonb_build_object('organisation_id',v_org,'ledger','sales',
+    'contact_id',v_c3,'bank_account_id',v_bank,'date','2026-03-10',
+    'amount',400.00,'auto_allocate',true));
+
+  raise notice '--- Amounts and counts per customer';
+
+  select * into v_r from contact_summary(v_org,'sales')
+   where contact_id = v_c1;
+
+  if v_r.total_due <> 6000 then
+    raise exception 'FAIL: Hartley should owe 6000, got %', v_r.total_due;
+  end if;
+  if v_r.outstanding_count <> 3 then
+    raise exception 'FAIL: 3 outstanding invoices expected, got %', v_r.outstanding_count;
+  end if;
+  raise notice 'PASS  6,000 due across 3 invoices';
+
+  -- Only the two past their due date count as overdue.
+  if v_r.overdue_amount <> 3000 then
+    raise exception 'FAIL: 3000 should be overdue, got %', v_r.overdue_amount;
+  end if;
+  if v_r.overdue_count <> 2 then
+    raise exception 'FAIL: 2 invoices should be overdue, got %', v_r.overdue_count;
+  end if;
+  raise notice 'PASS  3,000 overdue across 2 invoices — the future-dated one excluded';
+
+  if not v_r.over_limit then
+    raise exception 'FAIL: 6000 against a 5000 limit should flag';
+  end if;
+  raise notice 'PASS  flagged as over the 5,000 credit limit';
+
+  -- The buckets have to add back to the total.
+  if v_r.current_amount + v_r.days_30 + v_r.days_60 + v_r.days_90 + v_r.older
+     <> v_r.total_due then
+    raise exception 'FAIL: the ageing buckets do not add up to the total';
+  end if;
+  raise notice 'PASS  the ageing buckets add back to the total due';
+
+  -- Customers with nothing outstanding still appear, at nil.
+  select * into v_r from contact_summary(v_org,'sales') where contact_id = v_c2;
+  if v_r.total_due <> 0 or v_r.outstanding_count <> 0 then
+    raise exception 'FAIL: a customer with no invoices should show nil';
+  end if;
+  raise notice 'PASS  a customer with no invoices still appears, at nil';
+
+  select * into v_r from contact_summary(v_org,'sales') where contact_id = v_c3;
+  if v_r.total_due <> 0 then
+    raise exception 'FAIL: a fully paid customer should show nil, got %', v_r.total_due;
+  end if;
+  raise notice 'PASS  a customer who has paid shows nil rather than dropping off';
+
+  raise notice '--- The reports agree with the screen';
+
+  select coalesce(sum(total_due), 0) into v_n from contact_summary(v_org,'sales');
+  select coalesce(sum(outstanding_amount), 0) into v_c from outstanding_items(v_org,'sales',false);
+
+  if v_n <> v_c then
+    raise exception 'FAIL: the summary totals % but the detail totals %', v_n, v_c;
+  end if;
+  raise notice 'PASS  the summary and the detailed report total the same at %',
+    to_char(v_n, 'FM999999990.00');
+
+  select coalesce(sum(jl.debit - jl.credit), 0) into v_n
+    from journal_line jl join account a on a.id = jl.account_id
+   where jl.organisation_id = v_org and a.control_type = 'debtors';
+
+  if v_n <> v_c then
+    raise exception 'FAIL: the reports total % but trade debtors is %', v_c, v_n;
+  end if;
+  raise notice 'PASS  and both agree with trade debtors on the trial balance';
+
+  select count(*) into v_c from outstanding_items(v_org,'sales',true);
+  if v_c <> 2 then
+    raise exception 'FAIL: the overdue report should have 2 rows, got %', v_c;
+  end if;
+  raise notice 'PASS  the overdue report shows only the 2 overdue invoices';
+
+  -- Every row carries a bucket, or the spreadsheet cannot be pivoted.
+  if exists (select 1 from outstanding_items(v_org,'sales',false) where bucket is null) then
+    raise exception 'FAIL: a row came back with no ageing bucket';
+  end if;
+  raise notice 'PASS  every row carries an ageing bucket';
+
+  raise notice '--- Editing a customer';
+
+  perform update_contact(jsonb_build_object(
+    'id', v_c2, 'name', 'Quiet Company Ltd',
+    'payment_terms_days', 14, 'credit_limit', 2500,
+    'address_line_1', '4 Elm Trading Estate', 'city', 'Wokingham',
+    'postcode', 'RG40 1AB', 'on_hold', true));
+
+  if (select name from contact where id = v_c2) <> 'Quiet Company Ltd' then
+    raise exception 'FAIL: the name did not change';
+  end if;
+  if (select payment_terms_days from contact where id = v_c2) <> 14 then
+    raise exception 'FAIL: the terms did not change';
+  end if;
+  if not (select on_hold from contact where id = v_c2) then
+    raise exception 'FAIL: on hold did not take';
+  end if;
+  raise notice 'PASS  name, terms, credit limit and hold status all updated';
+
+  if (select postcode from contact_address where contact_id = v_c2) <> 'RG40 1AB' then
+    raise exception 'FAIL: the address was not created alongside';
+  end if;
+  raise notice 'PASS  the address was created with it, not left behind';
+
+  -- Editing again should update the same address rather than add another.
+  perform update_contact(jsonb_build_object(
+    'id', v_c2, 'name', 'Quiet Company Ltd', 'postcode', 'RG41 2QN'));
+
+  if (select count(*) from contact_address where contact_id = v_c2) <> 1 then
+    raise exception 'FAIL: a second address was created';
+  end if;
+  if (select postcode from contact_address where contact_id = v_c2) <> 'RG41 2QN' then
+    raise exception 'FAIL: the address was not updated';
+  end if;
+  raise notice 'PASS  editing again updates the same address rather than adding another';
+
+  if not exists (
+    select 1 from audit_log where organisation_id = v_org
+      and table_name = 'contact' and action = 'updated'
+  ) then
+    raise exception 'FAIL: the change was not logged';
+  end if;
+  raise notice 'PASS  the change is recorded in the audit log';
+
+  raise notice '';
+  raise notice 'All list and report tests passed.';
+end;
+$$;
