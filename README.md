@@ -57,6 +57,7 @@ supabase/migrations/0019_undo_and_reallocate.sql
 supabase/migrations/0020_smarter_capture.sql
 supabase/migrations/0021_overview.sql
 supabase/migrations/0022_contact_reports.sql
+supabase/migrations/0023_capture_queue.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -320,6 +321,32 @@ paperwork in front of you is worse than useless.
 - **Confidence shown only where it is low.** A row of green ticks trains
   people to stop looking. A marker on the two shaky fields sends the eye
   where it should go.
+
+### Reading is a queue, not a loop
+
+Uploading and reading used to happen in one client-side loop: upload a
+file, read it, upload the next. Clicking away part way through stopped the
+loop, so files it had not reached yet were never uploaded at all — and
+anything it had started sat on "Reading" for ever, because the inbox
+offered no action for that status.
+
+Now the two are separate. **Uploading** happens first, four at a time, and
+is quick. Once a file is in the inbox it is safe. **Reading** is a queue:
+`claim_next_capture()` takes one document at a time using `FOR UPDATE SKIP
+LOCKED`, so two tabs cannot read the same one, and each document's status
+records exactly where to carry on.
+
+`reclaim_stuck_captures()` runs whenever the inbox loads. Anything left
+mid-read for more than five minutes goes back in the queue with a note
+saying it was interrupted — a closed tab heals itself instead of leaving a
+document stranded. After three failed attempts it stops retrying and says
+so, rather than looping.
+
+Leaving the page still stops the reading, but nothing is lost and the
+button picks up where it left off. Genuinely unattended processing needs a
+scheduled trigger: `app/api/capture/process/route.js` is written and ready
+for one, but frequent cron jobs need a Vercel plan above the free tier, so
+it stays switched off until then.
 
 ### The stub provider
 

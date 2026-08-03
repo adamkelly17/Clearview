@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 
 /** Kicks off extraction for a document that has not been read yet. */
 export default function ExtractTrigger({ captureId, label = 'Read it', small = false }) {
@@ -14,6 +15,10 @@ export default function ExtractTrigger({ captureId, label = 'Read it', small = f
     setError(null);
 
     try {
+      // Reset first, so a document stuck on "Reading" can be retried.
+      const supabase = createClient();
+      await supabase.rpc('retry_capture', { p_capture_id: captureId });
+
       const res = await fetch('/api/capture/extract', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

@@ -4,12 +4,13 @@ import { currentProvider } from '@/lib/extraction';
 import Money from '@/components/Money';
 import { shortDate } from '@/lib/format';
 import ExtractTrigger from './ExtractTrigger';
+import QueueRunner from './QueueRunner';
 
 export const dynamic = 'force-dynamic';
 
 const STATUS = {
   uploaded:   { label: 'Waiting to be read', className: '' },
-  extracting: { label: 'Reading',            className: 'pill-caution' },
+  extracting: { label: 'Reading now',        className: 'pill-caution' },
   extracted:  { label: 'Needs checking',     className: 'pill-caution' },
   failed:     { label: 'Failed',             className: 'pill-negative' },
   approved:   { label: 'Posted',             className: 'pill-accent' },
@@ -18,6 +19,18 @@ const STATUS = {
 
 export default async function CaptureInboxPage() {
   const { supabase, org } = await requireOrg();
+
+  /* Anything left mid-read by a closed tab goes back in the queue before
+     the list is drawn, so a stuck document heals itself rather than
+     sitting on "Reading" until someone notices. */
+  await supabase.rpc('reclaim_stuck_captures', {
+    p_organisation_id: org.id,
+    p_older_than: '5 minutes',
+  });
+
+  const { data: queue } = await supabase.rpc('capture_queue_status', {
+    p_organisation_id: org.id,
+  });
 
   const { data: captures } = await supabase
     .from('capture_document')
@@ -38,7 +51,6 @@ export default async function CaptureInboxPage() {
   }));
 
   const needsChecking = rows.filter((r) => r.status === 'extracted').length;
-  const unread = rows.filter((r) => r.status === 'uploaded' || r.status === 'failed').length;
 
   return (
     <div className="page page-wide">
@@ -53,6 +65,12 @@ export default async function CaptureInboxPage() {
         </div>
         <Link href="/capture/new" className="btn btn-primary">Upload invoices</Link>
       </div>
+
+      <QueueRunner
+        orgId={org.id}
+        waiting={queue?.waiting || 0}
+        reading={queue?.reading || 0}
+      />
 
       {currentProvider() === 'stub' && (
         <div className="notice notice-caution">
@@ -146,8 +164,13 @@ export default async function CaptureInboxPage() {
                           Check it
                         </Link>
                       )}
-                      {(c.status === 'uploaded' || c.status === 'failed') && (
-                        <ExtractTrigger captureId={c.id} label="Read" small />
+                      {(c.status === 'uploaded' || c.status === 'failed'
+                        || c.status === 'extracting') && (
+                        <ExtractTrigger
+                          captureId={c.id}
+                          label={c.status === 'failed' ? 'Try again' : 'Read'}
+                          small
+                        />
                       )}
                       {c.status === 'approved' && (
                         <Link href="/bills" className="btn btn-open btn-sm">Posted</Link>
@@ -161,9 +184,11 @@ export default async function CaptureInboxPage() {
         )}
       </div>
 
-      {unread > 0 && (
+      {Number(queue?.failed) > 0 && (
         <p className="hint mt-md">
-          {unread} document{unread === 1 ? '' : 's'} not yet read.
+          {queue.failed} document{Number(queue.failed) === 1 ? '' : 's'} could not be
+          read after several attempts. Try again individually, or enter{' '}
+          {Number(queue.failed) === 1 ? 'it' : 'them'} by hand.
         </p>
       )}
     </div>

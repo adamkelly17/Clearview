@@ -510,3 +510,158 @@ begin
   raise notice 'All Amazon invoice tests passed.';
 end;
 $$;
+
+-- =====================================================================
+-- The reading queue.
+--
+-- Twenty invoices were uploaded, five were read, the tab was closed and
+-- the rest were lost. These are the guards against that happening again.
+-- =====================================================================
+
+do $$
+declare
+  v_user uuid := gen_random_uuid();
+  v_org  uuid;
+  v_ids  uuid[] := '{}';
+  v_id   uuid;
+  v_a    uuid;
+  v_b    uuid;
+  v_q    jsonb;
+  v_n    int;
+  v_i    int;
+begin
+  insert into auth.users (id, email) values (v_user, 'queue@example.com');
+  perform set_config('request.jwt.claim.sub', v_user::text, false);
+
+  v_org := create_organisation(jsonb_build_object(
+    'name','Queue Test Ltd','entity_type_code','limited_company',
+    'year_end_day',31,'year_end_month',3,
+    'books_start_date','2026-04-01','vat_enabled',false));
+
+  -- Six documents uploaded, none read yet.
+  for v_i in 1..6 loop
+    insert into capture_document (organisation_id, storage_path, file_name, mime_type, status)
+    values (v_org, v_org || '/f' || v_i || '.pdf', 'inv' || v_i || '.pdf',
+            'application/pdf', 'uploaded')
+    returning id into v_id;
+    v_ids := v_ids || v_id;
+  end loop;
+
+  raise notice '--- The queue knows what is left';
+
+  v_q := capture_queue_status(v_org);
+  if (v_q ->> 'waiting')::int <> 6 then
+    raise exception 'FAIL: 6 should be waiting, got %', v_q ->> 'waiting';
+  end if;
+  raise notice 'PASS  6 documents waiting to be read';
+
+  raise notice '--- Claiming is atomic';
+
+  v_a := claim_next_capture(v_org);
+  v_b := claim_next_capture(v_org);
+
+  if v_a is null or v_b is null then
+    raise exception 'FAIL: two claims should return two documents';
+  end if;
+  if v_a = v_b then
+    raise exception 'FAIL: the same document was claimed twice — two tabs would read it twice';
+  end if;
+  raise notice 'PASS  two claims return two different documents';
+
+  if (select status from capture_document where id = v_a) <> 'extracting' then
+    raise exception 'FAIL: a claimed document should be marked as being read';
+  end if;
+  if (select extraction_attempts from capture_document where id = v_a) <> 1 then
+    raise exception 'FAIL: the attempt should have been counted';
+  end if;
+  raise notice 'PASS  claiming marks it as being read and counts the attempt';
+
+  v_q := capture_queue_status(v_org);
+  if (v_q ->> 'waiting')::int <> 4 or (v_q ->> 'reading')::int <> 2 then
+    raise exception 'FAIL: expected 4 waiting and 2 reading, got % and %',
+      v_q ->> 'waiting', v_q ->> 'reading';
+  end if;
+  raise notice 'PASS  the queue now reads 4 waiting, 2 being read';
+
+  raise notice '--- A closed tab does not lose anything';
+
+  -- Pretend the browser went away: the two claimed documents were left
+  -- mid-read some time ago.
+  update capture_document
+     set extraction_started_at = now() - interval '30 minutes'
+   where id in (v_a, v_b);
+
+  v_n := reclaim_stuck_captures(v_org, '5 minutes');
+  if v_n <> 2 then
+    raise exception 'FAIL: both abandoned documents should be reclaimed, got %', v_n;
+  end if;
+  raise notice 'PASS  documents abandoned mid-read are put back in the queue';
+
+  if (select status from capture_document where id = v_a) <> 'uploaded' then
+    raise exception 'FAIL: a reclaimed document should be waiting again';
+  end if;
+  if (select status_detail from capture_document where id = v_a)
+     not like '%interrupted%' then
+    raise exception 'FAIL: it should say why it is back in the queue';
+  end if;
+  raise notice 'PASS  and it says it was interrupted rather than looking untouched';
+
+  v_q := capture_queue_status(v_org);
+  if (v_q ->> 'waiting')::int <> 6 then
+    raise exception 'FAIL: all 6 should be waiting again, got %', v_q ->> 'waiting';
+  end if;
+  raise notice 'PASS  all 6 are back in the queue — nothing was lost';
+
+  raise notice '--- Something genuinely mid-read is left alone';
+
+  v_a := claim_next_capture(v_org);
+  v_n := reclaim_stuck_captures(v_org, '5 minutes');
+
+  if v_n <> 0 then
+    raise exception 'FAIL: a document claimed seconds ago must not be snatched back';
+  end if;
+  if (select status from capture_document where id = v_a) <> 'extracting' then
+    raise exception 'FAIL: it should still be marked as being read';
+  end if;
+  raise notice 'PASS  a document being read right now is not interfered with';
+
+  raise notice '--- Repeated failure stops rather than loops';
+
+  update capture_document
+     set extraction_attempts = 3,
+         extraction_started_at = now() - interval '30 minutes'
+   where id = v_a;
+
+  perform reclaim_stuck_captures(v_org, '5 minutes');
+
+  if (select status from capture_document where id = v_a) <> 'failed' then
+    raise exception 'FAIL: after three attempts it should stop retrying, got %',
+      (select status from capture_document where id = v_a);
+  end if;
+  raise notice 'PASS  after three attempts it is marked failed rather than retried for ever';
+
+  raise notice '--- Retrying by hand resets it';
+
+  perform retry_capture(v_a);
+
+  if (select status from capture_document where id = v_a) <> 'uploaded' then
+    raise exception 'FAIL: a manual retry should put it back in the queue';
+  end if;
+  if (select extraction_attempts from capture_document where id = v_a) <> 0 then
+    raise exception 'FAIL: a deliberate retry should reset the attempt count';
+  end if;
+  raise notice 'PASS  a manual retry puts it back and clears the attempt count';
+
+  raise notice '--- An empty queue claims nothing';
+
+  update capture_document set status = 'approved' where organisation_id = v_org;
+
+  if claim_next_capture(v_org) is not null then
+    raise exception 'FAIL: an empty queue should return nothing';
+  end if;
+  raise notice 'PASS  an empty queue returns nothing rather than spinning';
+
+  raise notice '';
+  raise notice 'All queue tests passed.';
+end;
+$$;
