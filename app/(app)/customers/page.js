@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { requireOrg } from '@/lib/org';
-import { money, shortDate } from '@/lib/format';
+import { money } from '@/lib/format';
 import Money from '@/components/Money';
 import SortHeader from '@/components/SortHeader';
 import ActionsMenu from '@/components/ActionsMenu';

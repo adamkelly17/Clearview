@@ -100,6 +100,18 @@ Nothing else to configure.
 
 ---
 
+## Linting
+
+```bash
+npm run lint
+```
+
+Worth running before every deploy, and not optional. An undefined variable
+inside JSX is a **runtime** error, not a compile one — `next build` reports
+success and the page then dies with "a client-side exception has occurred".
+That is exactly how a missing `useState` reached production once. The
+config turns `no-undef` into an error for that reason.
+
 ## Testing the ledger
 
 The database rules are covered by a test suite that runs against any

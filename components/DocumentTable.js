@@ -39,7 +39,6 @@ export default function DocumentTable({
       </thead>
       <tbody>
         {rows.map((d) => {
-          const item = d.ledger_item;
           const status = STATUS[d.settlement_status] || STATUS.outstanding;
           const voided = d.status === 'void';
           const overdue =

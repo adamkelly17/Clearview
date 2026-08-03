@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
  * facts — the whole point is what each one leaves behind.
  */
 export default async function DashboardPage() {
-  const { supabase, org, features, currentYear } = await requireOrg();
+  const { supabase, org, currentYear } = await requireOrg();
   const ccy = org.base_currency_code;
 
   const from = currentYear?.start_date || `${new Date().getFullYear()}-01-01`;

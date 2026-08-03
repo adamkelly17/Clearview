@@ -218,7 +218,7 @@ function Line({
 
     // Save the rule, then optionally sweep up everything else it catches.
     const supabase = createClient();
-    const { data: ruleId, error: ruleError } = await supabase.rpc('create_match_rule', {
+    const { error: ruleError } = await supabase.rpc('create_match_rule', {
       p_config: {
         organisation_id: orgId,
         bank_account_id: rule.scope === 'this' ? bankAccountId : null,

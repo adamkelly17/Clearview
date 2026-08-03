@@ -1,7 +1,6 @@
 'use client';
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import Money from '@/components/Money';
 import UnallocateButton from '@/components/UnallocateButton';
 import { money, shortDate } from '@/lib/format';

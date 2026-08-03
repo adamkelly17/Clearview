@@ -59,7 +59,10 @@ export default function DocumentForm({
     ? vatCodes.find((v) => (cfg.ledger === 'sales' ? v.is_default_sales : v.is_default_purchase))
     : null;
 
-  const usableVatCodes = vatEnabled ? vatCodes : [];
+  const usableVatCodes = useMemo(
+    () => (vatEnabled ? vatCodes : []),
+    [vatEnabled, vatCodes]
+  );
 
   const [contactId, setContactId] = useState(
     editing?.contact_id || initialContactId || ''
@@ -86,6 +89,10 @@ export default function DocumentForm({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  /* Set when an edit leaves money on account, so the screen can say so
+     instead of redirecting past it. */
+  const [outcome, setOutcome] = useState(null);
 
   const contact = contacts.find((c) => c.id === contactId);
 
