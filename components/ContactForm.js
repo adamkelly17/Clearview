@@ -10,28 +10,36 @@ import { readableError } from '@/lib/format';
  * wording and which flag is set; everything else is identical, because
  * a great many businesses buy from the people they sell to.
  */
-export default function ContactForm({ orgId, kind, accounts, vatCodes, pro }) {
+export default function ContactForm({ orgId, kind, accounts, vatCodes, pro, editing = null }) {
   const router = useRouter();
   const isCustomer = kind === 'customer';
+  const isEdit = Boolean(editing);
 
   const [form, setForm] = useState({
-    name: '',
-    contact_name: '',
-    email: '',
-    phone: '',
-    payment_terms_days: isCustomer ? 30 : 30,
-    credit_limit: '',
-    address_line_1: '',
-    address_line_2: '',
-    city: '',
-    postcode: '',
-    vat_number: '',
-    default_account_id: '',
-    default_vat_code_id: '',
-    cis_registered: false,
-    cis_deduction_rate: '20',
-    notes: '',
-    also_the_other: false,
+    name: editing?.name || '',
+    code: editing?.code || '',
+    contact_name: editing?.contact_name || '',
+    email: editing?.email || '',
+    phone: editing?.phone || '',
+    payment_terms_days: editing?.payment_terms_days ?? 30,
+    credit_limit: editing?.credit_limit ?? '',
+    address_line_1: editing?.address_line_1 || '',
+    address_line_2: editing?.address_line_2 || '',
+    city: editing?.city || '',
+    postcode: editing?.postcode || '',
+    vat_number: editing?.vat_number || '',
+    default_account_id: editing?.default_account_id || '',
+    default_vat_code_id: editing?.default_vat_code_id || '',
+    cis_registered: editing?.cis_registered || false,
+    cis_deduction_rate: editing?.cis_deduction_rate ?? '20',
+    notes: editing?.notes || '',
+    on_hold: editing?.on_hold || false,
+    active: editing?.active ?? true,
+    // On an existing record this reflects what is already true, rather
+    // than being an extra thing to opt into.
+    also_the_other: editing
+      ? (isCustomer ? Boolean(editing.is_supplier) : Boolean(editing.is_customer))
+      : false,
   });
 
   const [busy, setBusy] = useState(false);
@@ -49,29 +57,33 @@ export default function ContactForm({ orgId, kind, accounts, vatCodes, pro }) {
     setError(null);
 
     const supabase = createClient();
-    const { error } = await supabase.rpc('create_contact', {
-      p_config: {
-        organisation_id: orgId,
-        name: form.name.trim(),
-        is_customer: isCustomer || form.also_the_other,
-        is_supplier: !isCustomer || form.also_the_other,
-        contact_name: form.contact_name,
-        email: form.email,
-        phone: form.phone,
-        payment_terms_days: Number(form.payment_terms_days) || 30,
-        credit_limit: form.credit_limit || null,
-        address_line_1: form.address_line_1,
-        address_line_2: form.address_line_2,
-        city: form.city,
-        postcode: form.postcode,
-        vat_number: form.vat_number,
-        default_account_id: form.default_account_id || null,
-        default_vat_code_id: form.default_vat_code_id || null,
-        cis_registered: form.cis_registered,
-        cis_deduction_rate: form.cis_registered ? form.cis_deduction_rate : null,
-        notes: form.notes,
-      },
-    });
+    const payload = {
+      ...(isEdit
+        ? { id: editing.id, code: form.code || null, on_hold: form.on_hold, active: form.active }
+        : { organisation_id: orgId }),
+      name: form.name.trim(),
+      is_customer: isCustomer || form.also_the_other,
+      is_supplier: !isCustomer || form.also_the_other,
+      contact_name: form.contact_name,
+      email: form.email,
+      phone: form.phone,
+      payment_terms_days: Number(form.payment_terms_days) || 30,
+      credit_limit: form.credit_limit || null,
+      address_line_1: form.address_line_1,
+      address_line_2: form.address_line_2,
+      city: form.city,
+      postcode: form.postcode,
+      vat_number: form.vat_number,
+      default_account_id: form.default_account_id || null,
+      default_vat_code_id: form.default_vat_code_id || null,
+      cis_registered: form.cis_registered,
+      cis_deduction_rate: form.cis_registered ? form.cis_deduction_rate : null,
+      notes: form.notes,
+    };
+
+    const { error } = isEdit
+      ? await supabase.rpc('update_contact', { p_config: payload })
+      : await supabase.rpc('create_contact', { p_config: payload });
 
     setBusy(false);
 
@@ -80,7 +92,11 @@ export default function ContactForm({ orgId, kind, accounts, vatCodes, pro }) {
       return;
     }
 
-    router.push(isCustomer ? '/customers' : '/suppliers');
+    router.push(
+      isEdit
+        ? `/${isCustomer ? 'customers' : 'suppliers'}/${editing.id}`
+        : isCustomer ? '/customers' : '/suppliers'
+    );
     router.refresh();
   }
 
@@ -314,6 +330,46 @@ export default function ContactForm({ orgId, kind, accounts, vatCodes, pro }) {
             />
           </div>
 
+          {isEdit && (
+            <>
+              <div className="toggle-row">
+                <div className="toggle-copy">
+                  <div className="toggle-title">On hold</div>
+                  <div className="toggle-desc">
+                    Warns before anything new is raised against them. Nothing
+                    already recorded changes.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.on_hold}
+                  aria-label="On hold"
+                  className={`switch ${form.on_hold ? 'switch-on' : ''}`}
+                  onClick={() => set({ on_hold: !form.on_hold })}
+                />
+              </div>
+
+              <div className="toggle-row">
+                <div className="toggle-copy">
+                  <div className="toggle-title">Active</div>
+                  <div className="toggle-desc">
+                    Turn off to hide them from the lists. Their history stays
+                    exactly as it is.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.active}
+                  aria-label="Active"
+                  className={`switch ${form.active ? 'switch-on' : ''}`}
+                  onClick={() => set({ active: !form.active })}
+                />
+              </div>
+            </>
+          )}
+
           <label className="field" style={{ marginTop: '1rem', marginBottom: 0 }}>
             <span className="label">
               Notes <span className="muted">(optional)</span>
@@ -337,7 +393,11 @@ export default function ContactForm({ orgId, kind, accounts, vatCodes, pro }) {
         </button>
         <div className="spacer" />
         <button className="btn btn-primary" onClick={save} disabled={busy}>
-          {busy ? 'Saving…' : `Save ${isCustomer ? 'customer' : 'supplier'}`}
+          {busy
+            ? 'Saving…'
+            : isEdit
+            ? 'Save changes'
+            : `Save ${isCustomer ? 'customer' : 'supplier'}`}
         </button>
       </div>
     </>

@@ -13,11 +13,14 @@ import { money, readableError, shortDate, today } from '@/lib/format';
  * much of the payment is still unaccounted for. Anything left over sits
  * on account rather than being forced somewhere it does not belong.
  */
-export default function PaymentForm({ orgId, ledger, contacts, bankAccounts, pro, currencyCode }) {
+export default function PaymentForm({
+  orgId, ledger, contacts, bankAccounts, pro, currencyCode,
+  initialContactId = null,
+}) {
   const router = useRouter();
   const isSales = ledger === 'sales';
 
-  const [contactId, setContactId] = useState('');
+  const [contactId, setContactId] = useState(initialContactId || '');
   const [bankId, setBankId] = useState(bankAccounts[0]?.id || '');
   const [date, setDate] = useState(today());
   const [amount, setAmount] = useState('');

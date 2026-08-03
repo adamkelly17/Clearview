@@ -45,6 +45,8 @@ export default function DocumentForm({
   /* When present, the form is editing rather than creating. Saving
      voids the original and posts a replacement — see replace_document(). */
   editing = null,
+  /* Arrives from an actions menu, so the contact is already chosen. */
+  initialContactId = null,
 }) {
   const router = useRouter();
   const cfg = CONFIG[docType];
@@ -59,7 +61,9 @@ export default function DocumentForm({
 
   const usableVatCodes = vatEnabled ? vatCodes : [];
 
-  const [contactId, setContactId] = useState(editing?.contact_id || '');
+  const [contactId, setContactId] = useState(
+    editing?.contact_id || initialContactId || ''
+  );
   const [date, setDate] = useState(editing?.date || today());
   const [dueDate, setDueDate] = useState(editing?.due_date || '');
   const [number, setNumber] = useState(editing?.number || '');
