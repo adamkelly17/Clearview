@@ -8,14 +8,15 @@
  * a 28px logo through the image optimiser costs a round trip and buys
  * nothing.
  *
- * Both files carry transparency, so they sit on paper or on a coloured
- * panel without a white box around them.
+ * Both carry transparency, so they sit on paper without a white box
+ * around them. The navy mark disappears against a navy panel, so a
+ * reversed pair exists for that — pass `reversed`.
  */
 
-export function LogoMark({ size = 28, className = '' }) {
+export function LogoMark({ size = 28, className = '', reversed = false }) {
   return (
     <img
-      src="/clearview-mark.png"
+      src={reversed ? '/clearview-mark-reversed.png' : '/clearview-mark.png'}
       alt=""
       width={size}
       height={size}
@@ -25,10 +26,10 @@ export function LogoMark({ size = 28, className = '' }) {
   );
 }
 
-export function Wordmark({ height = 44, className = '' }) {
+export function Wordmark({ height = 44, className = '', reversed = false }) {
   return (
     <img
-      src="/clearview-logo.png"
+      src={reversed ? '/clearview-logo-reversed.png' : '/clearview-logo.png'}
       alt="Clearview"
       height={height}
       className={className}

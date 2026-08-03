@@ -55,6 +55,7 @@ supabase/migrations/0017_change_year_end.sql
 supabase/migrations/0018_next_year.sql
 supabase/migrations/0019_undo_and_reallocate.sql
 supabase/migrations/0020_smarter_capture.sql
+supabase/migrations/0021_overview.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -113,6 +114,7 @@ psql -d ledgertest -f supabase/test/05_void_vat_test.sql
 psql -d ledgertest -f supabase/test/06_edit_test.sql
 psql -d ledgertest -f supabase/test/07_year_end_test.sql
 psql -d ledgertest -f supabase/test/08_undo_reallocate_test.sql
+psql -d ledgertest -f supabase/test/09_overview_test.sql
 ```
 
 A hundred and forty-one assertions across the six files. Each is independent — they can
@@ -365,6 +367,33 @@ invoices through a real model and counting the corrections before deciding
 this saves time on your particular post.
 
 
+
+## The overview
+
+Three panels, each answering something an owner actually asks.
+
+**How the business is doing** is a chain, not four separate cards: sales,
+less cost of sales, gross profit with its margin, less overheads, profit.
+Laid out downward because these figures are not independent facts — the
+point of each is what it leaves behind. Percentages of sales sit alongside,
+which is how you spot a problem long before the absolute numbers look
+wrong.
+
+Other income sits *below* gross profit deliberately. Bank interest is
+income but it is not sales, and letting it flatter the gross margin would
+defeat the object — the margin is about the work.
+
+**The bank** shows the balance, how many entries are unreconciled, and how
+old the oldest of those is. The count alone says little; the date says a
+great deal. Something sitting there since April means the bank has not
+been looked at since April, and the balance on screen should not be
+trusted. Past thirty days it says so plainly.
+
+**Where you stand** is bank, plus what is owed to you, less what you owe,
+and where that leaves you if everything settled. For a small business that
+last figure is more use than either ledger total on its own — it is the
+answer to "can I afford this". It also names who to chase first, chosen by
+age rather than size, because age is what turns a debt into a bad one.
 
 ## Financial years
 
