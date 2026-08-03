@@ -465,3 +465,179 @@ begin
   raise notice 'All trading tests passed.';
 end;
 $$;
+
+-- =====================================================================
+-- Negative lines on an invoice.
+--
+-- A real Screwfix bill with a "Promotions (discount)" line of −£2.92
+-- failed to post: a negative line was being written as a negative debit,
+-- which the ledger rightly refuses. A negative amount is a credit.
+-- =====================================================================
+
+do $$
+declare
+  v_user uuid := gen_random_uuid();
+  v_org  uuid; v_supp uuid; v_cust uuid;
+  v_mat uuid; v_sales uuid; v_t1 uuid;
+  v_doc uuid; v_n numeric; v_c int;
+begin
+  insert into auth.users (id, email) values (v_user, 'discount@example.com');
+  perform set_config('request.jwt.claim.sub', v_user::text, false);
+
+  v_org := create_organisation(jsonb_build_object(
+    'name','Discount Test Ltd','entity_type_code','limited_company',
+    'year_end_day',31,'year_end_month',3,
+    'books_start_date','2026-01-01','vat_enabled',false));
+
+  select id into v_mat   from account where organisation_id=v_org and code='5001';
+  select id into v_sales from account where organisation_id=v_org and code='4000';
+
+  v_supp := create_contact(jsonb_build_object(
+    'organisation_id',v_org,'name','Screwfix','is_supplier',true));
+  v_cust := create_contact(jsonb_build_object(
+    'organisation_id',v_org,'name','A Customer','is_customer',true));
+
+  raise notice '--- A bill with a discount line';
+
+  -- The actual invoice: three items, shipping, and a promotion.
+  v_doc := post_document(jsonb_build_object(
+    'organisation_id',v_org,'doc_type','PI','contact_id',v_supp,
+    'date','2026-02-10','number','SF-88213',
+    'lines', jsonb_build_array(
+      jsonb_build_object('description','Safety goggles','quantity',2,
+        'unit_price',2.95,'account_id',v_mat),
+      jsonb_build_object('description','FFP3 masks','quantity',1,
+        'unit_price',12.50,'account_id',v_mat),
+      jsonb_build_object('description','Gloves','quantity',2,
+        'unit_price',4.19,'account_id',v_mat),
+      jsonb_build_object('description','Shipping','quantity',1,
+        'unit_price',1.99,'account_id',v_mat),
+      jsonb_build_object('description','Promotions (discount)','quantity',1,
+        'unit_price',-2.92,'account_id',v_mat))));
+
+  raise notice 'PASS  an invoice carrying a negative line posts at all';
+
+  -- 5.90 + 12.50 + 8.38 + 1.99 − 2.92 = 25.85
+  if (select gross_total from document where id = v_doc) <> 25.85 then
+    raise exception 'FAIL: the bill should total 25.85, got %',
+      (select gross_total from document where id = v_doc);
+  end if;
+  raise notice 'PASS  it totals 25.85, with the discount taken off';
+
+  -- The discount must be a credit, not a negative debit.
+  if not exists (
+    select 1 from journal_line jl
+     where jl.journal_id = (select journal_id from document where id = v_doc)
+       and jl.credit = 2.92 and jl.debit = 0
+       and jl.description = 'Promotions (discount)'
+  ) then
+    raise exception 'FAIL: the discount should be a credit of 2.92';
+  end if;
+  raise notice 'PASS  the discount posted as a credit of 2.92, not a debit of −2.92';
+
+  if exists (
+    select 1 from journal_line
+     where journal_id = (select journal_id from document where id = v_doc)
+       and (debit < 0 or credit < 0)
+  ) then
+    raise exception 'FAIL: a negative amount reached the ledger';
+  end if;
+  raise notice 'PASS  no negative amount anywhere in the ledger';
+
+  -- Materials should carry the net cost.
+  select coalesce(sum(debit - credit), 0) into v_n
+    from journal_line where account_id = v_mat;
+  if v_n <> 25.85 then
+    raise exception 'FAIL: materials should be 25.85 net of the discount, got %', v_n;
+  end if;
+  raise notice 'PASS  materials shows 25.85, net of the discount';
+
+  -- The line detail is kept as printed, negative and all, so the
+  -- document still matches the paper.
+  if (select net_amount from document_line
+       where document_id = v_doc and description = 'Promotions (discount)') <> -2.92 then
+    raise exception 'FAIL: the document line should still read −2.92';
+  end if;
+  raise notice 'PASS  the document line still reads −2.92, matching the paper';
+
+  raise notice '--- The same on a sales invoice';
+
+  v_doc := post_document(jsonb_build_object(
+    'organisation_id',v_org,'doc_type','SI','contact_id',v_cust,
+    'date','2026-02-11',
+    'lines', jsonb_build_array(
+      jsonb_build_object('description','Work done','quantity',1,
+        'unit_price',500,'account_id',v_sales),
+      jsonb_build_object('description','Goodwill discount','quantity',1,
+        'unit_price',-50,'account_id',v_sales))));
+
+  if (select gross_total from document where id = v_doc) <> 450.00 then
+    raise exception 'FAIL: the invoice should total 450.00, got %',
+      (select gross_total from document where id = v_doc);
+  end if;
+
+  -- On a sale, income is normally a credit, so the discount is a debit.
+  if not exists (
+    select 1 from journal_line jl
+     where jl.journal_id = (select journal_id from document where id = v_doc)
+       and jl.debit = 50.00 and jl.description = 'Goodwill discount'
+  ) then
+    raise exception 'FAIL: a discount on a sale should be a debit of 50.00';
+  end if;
+  raise notice 'PASS  on a sale the discount flips the other way, to a debit of 50.00';
+
+  select coalesce(sum(credit - debit), 0) into v_n
+    from journal_line where account_id = v_sales;
+  if v_n <> 450.00 then
+    raise exception 'FAIL: sales should be 450.00, got %', v_n;
+  end if;
+  raise notice 'PASS  sales shows 450.00';
+
+  raise notice '--- With VAT, where the discount carries VAT too';
+
+  update organisation_feature set vat_enabled = true where organisation_id = v_org;
+  select id into v_t1 from vat_code where organisation_id = v_org and code = 'T1';
+
+  v_doc := post_document(jsonb_build_object(
+    'organisation_id',v_org,'doc_type','PI','contact_id',v_supp,
+    'date','2026-02-12','number','SF-88300',
+    'lines', jsonb_build_array(
+      jsonb_build_object('description','Tools','quantity',1,
+        'unit_price',100,'account_id',v_mat,'vat_code_id',v_t1),
+      jsonb_build_object('description','Discount','quantity',1,
+        'unit_price',-20,'account_id',v_mat,'vat_code_id',v_t1))));
+
+  if (select net_total from document where id = v_doc) <> 80.00
+     or (select vat_total from document where id = v_doc) <> 16.00
+     or (select gross_total from document where id = v_doc) <> 96.00 then
+    raise exception 'FAIL: expected 80.00 net, 16.00 VAT, 96.00 gross — got %, %, %',
+      (select net_total from document where id = v_doc),
+      (select vat_total from document where id = v_doc),
+      (select gross_total from document where id = v_doc);
+  end if;
+  raise notice 'PASS  VAT follows the discount: 80.00 net, 16.00 VAT, 96.00 gross';
+
+  raise notice '--- post_journal will not accept a negative either';
+
+  -- Any module written later could make the same mistake, so the door
+  -- itself normalises rather than trusting callers.
+  perform post_journal(v_org, '2026-02-13', 'Negative handed in',
+    jsonb_build_array(
+      jsonb_build_object('account_id', v_mat, 'debit', -30),
+      jsonb_build_object('account_id', v_sales, 'debit', 30)));
+
+  if exists (select 1 from journal_line where debit < 0 or credit < 0) then
+    raise exception 'FAIL: a negative reached the ledger through post_journal';
+  end if;
+  raise notice 'PASS  a negative debit handed to post_journal becomes a credit';
+
+  select sum(debit) into v_n from trial_balance(v_org, '2026-12-31');
+  if v_n <> (select sum(credit) from trial_balance(v_org, '2026-12-31')) then
+    raise exception 'FAIL: trial balance out of balance';
+  end if;
+  raise notice 'PASS  trial balance agrees at %', to_char(v_n, 'FM999999990.00');
+
+  raise notice '';
+  raise notice 'All negative line tests passed.';
+end;
+$$;

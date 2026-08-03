@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { money, readableError, shortDate } from '@/lib/format';
+import QuickContactModal from '@/components/QuickContactModal';
 
 /**
  * The review screen.
@@ -111,6 +112,14 @@ export default function ReviewForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [dupAcknowledged, setDupAcknowledged] = useState(false);
+  const [addingContact, setAddingContact] = useState(false);
+
+  /* A supplier created from the dialog is held here as well as being
+     selected, so it appears in the dropdown immediately. router.refresh()
+     will fold it into the real list a moment later, but the reviewer
+     should not have to wait — or lose the corrections already made. */
+  const [newSuppliers, setNewSuppliers] = useState([]);
+  const allSuppliers = [...suppliers, ...newSuppliers];
 
   const grouped = useMemo(() => {
     const groups = new Map();
@@ -215,6 +224,23 @@ export default function ReviewForm({
 
   return (
     <div className="review">
+      <QuickContactModal
+        open={addingContact}
+        onClose={() => setAddingContact(false)}
+        onCreated={({ id, name }) => {
+          setNewSuppliers((list) => [...list, { id, name, code: null }]);
+          setContactId(id);
+          setAddingContact(false);
+          router.refresh();
+        }}
+        orgId={capture.organisation_id}
+        kind={capture.ledger === 'purchase' ? 'supplier' : 'customer'}
+        extraction={extraction}
+        accounts={accounts}
+        vatCodes={vatCodes}
+        pro={pro}
+      />
+
       {/* ---------------- Original ---------------- */}
       <div className="review-doc">
         <div className="card" style={{ overflow: 'hidden' }}>
@@ -298,9 +324,9 @@ export default function ReviewForm({
                 onChange={(e) => setContactId(e.target.value)}
               >
                 <option value="">Choose…</option>
-                {suppliers.map((s) => (
+                {allSuppliers.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {pro ? `${s.code} — ${s.name}` : s.name}
+                    {pro && s.code ? `${s.code} — ${s.name}` : s.name}
                   </option>
                 ))}
               </select>
@@ -312,12 +338,16 @@ export default function ReviewForm({
                   )}
                   {extraction.match_method === 'similar_name' && ' — matched on a similar name'}
                   {extraction.match_method === 'vat_number' && ' — matched on VAT number'}
-                  {!extraction.matched_contact_id && (
+                  {!extraction.matched_contact_id && !contactId && (
                     <>
                       {' — no match on file. '}
-                      <a href="/suppliers/new" target="_blank" rel="noreferrer">
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => setAddingContact(true)}
+                      >
                         Add them
-                      </a>
+                      </button>
                     </>
                   )}
                 </span>

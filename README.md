@@ -58,6 +58,7 @@ supabase/migrations/0020_smarter_capture.sql
 supabase/migrations/0021_overview.sql
 supabase/migrations/0022_contact_reports.sql
 supabase/migrations/0023_capture_queue.sql
+supabase/migrations/0024_negative_lines.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -518,6 +519,24 @@ a button for that on the contact screen.
 A document already reported on a filed VAT return cannot be edited at all.
 No return can be filed yet, but the guard is in place for when they can
 be.
+
+## Negative lines
+
+Discounts, promotions, rebates and carriage refunds all print as negatives
+on perfectly ordinary invoices. What is not ordinary is a negative debit —
+double entry has no use for negative numbers, because a negative amount on
+one side is simply a positive amount on the other.
+
+`posting_sides()` works the side out from the sign. A −£2.92 promotion on a
+purchase invoice becomes a credit of £2.92 to that account; the same
+discount on a sales invoice becomes a debit. The document line keeps the
+figure as printed, so the paperwork still matches, while the ledger only
+ever holds positives.
+
+`post_journal()` normalises signs too, so a module written later cannot
+reach the constraint by making the same mistake. A negative debit handed in
+is understood as a credit — not a guess, just the same entry written the
+other way round.
 
 ## Nothing is ever deleted
 
