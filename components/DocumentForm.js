@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { money, readableError, today } from '@/lib/format';
+import AccountPicker from '@/components/AccountPicker';
 
 /**
  * One form for all four document types.
@@ -118,16 +119,6 @@ export default function DocumentForm({
       }))
     );
   }
-
-  const grouped = useMemo(() => {
-    const groups = new Map();
-    for (const a of accounts) {
-      const g = a.account_type?.report_group || 'Other';
-      if (!groups.has(g)) groups.set(g, []);
-      groups.get(g).push(a);
-    }
-    return [...groups.entries()];
-  }, [accounts]);
 
   /* Preview arithmetic, mirroring calculate_document_line(). */
   const totals = useMemo(() => {
@@ -440,22 +431,12 @@ export default function DocumentForm({
                       />
                     </td>
                     <td>
-                      <select
-                        className="select"
+                      <AccountPicker
+                        accounts={accounts}
                         value={l.account_id}
-                        onChange={(e) => update(l.key, { account_id: e.target.value })}
-                      >
-                        <option value="">Choose…</option>
-                        {grouped.map(([group, items]) => (
-                          <optgroup key={group} label={group}>
-                            {items.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {pro ? `${a.code} — ${a.name}` : a.friendly_name || a.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                        onChange={(id) => update(l.key, { account_id: id })}
+                        pro={pro}
+                      />
                     </td>
                     {vatEnabled && (
                       <td>

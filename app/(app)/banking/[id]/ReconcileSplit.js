@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { money, readableError, shortDate } from '@/lib/format';
+import AccountPicker from '@/components/AccountPicker';
 
 /**
  * Reconciliation, side by side.
@@ -243,16 +244,6 @@ function Line({
     router.refresh();
   }
 
-  const grouped = useMemo(() => {
-    const g = new Map();
-    for (const a of accounts) {
-      const key = a.account_type?.report_group || 'Other';
-      if (!g.has(key)) g.set(key, []);
-      g.get(key).push(a);
-    }
-    return [...g.entries()];
-  }, [accounts]);
-
   const ready =
     mode === 'transfer'
       ? Boolean(form.to_bank_account_id)
@@ -366,22 +357,12 @@ function Line({
                 <div className="recon-fields">
                   <label className="field" style={{ marginBottom: 0 }}>
                     <span className="label">{pro ? 'Account' : 'Category'}</span>
-                    <select
-                      className="select"
+                    <AccountPicker
+                      accounts={accounts}
                       value={form.account_id}
-                      onChange={(e) => set({ account_id: e.target.value })}
-                    >
-                      <option value="">Choose…</option>
-                      {grouped.map(([group, items]) => (
-                        <optgroup key={group} label={group}>
-                          {items.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {pro ? `${a.code} — ${a.name}` : a.friendly_name || a.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
+                      onChange={(id) => set({ account_id: id })}
+                      pro={pro}
+                    />
                   </label>
 
                   {vatEnabled && (

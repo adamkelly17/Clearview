@@ -17,8 +17,9 @@ const STATUS = {
   rejected:   { label: 'Discarded',          className: '' },
 };
 
-export default async function CaptureInboxPage() {
+export default async function CaptureInboxPage({ searchParams }) {
   const { supabase, org } = await requireOrg();
+  const view = searchParams?.view === 'archive' ? 'archive' : 'open';
 
   /* Anything left mid-read by a closed tab goes back in the queue before
      the list is drawn, so a stuck document heals itself rather than
@@ -28,9 +29,16 @@ export default async function CaptureInboxPage() {
     p_older_than: '5 minutes',
   });
 
-  const { data: queue } = await supabase.rpc('capture_queue_status', {
-    p_organisation_id: org.id,
-  });
+  /* A supplier added from one invoice should resolve every other invoice
+     waiting from them. Matching used to run once at extraction and never
+     again, so the second invoice from a new supplier still offered to add
+     them — and you ended up with two. */
+  await supabase.rpc('rematch_pending_extractions', { p_organisation_id: org.id });
+
+  const [{ data: queue }, { data: counts }] = await Promise.all([
+    supabase.rpc('capture_queue_status', { p_organisation_id: org.id }),
+    supabase.rpc('capture_counts', { p_organisation_id: org.id }),
+  ]);
 
   const { data: captures } = await supabase
     .from('capture_document')
@@ -41,9 +49,14 @@ export default async function CaptureInboxPage() {
         duplicate_of_document_id, validation_notes, is_current )
     `)
     .eq('organisation_id', org.id)
-    .neq('status', 'rejected')
+    .in(
+      'status',
+      view === 'archive'
+        ? ['approved', 'rejected']
+        : ['uploaded', 'extracting', 'extracted', 'failed']
+    )
     .order('created_at', { ascending: false })
-    .limit(100);
+    .limit(200);
 
   const rows = (captures || []).map((c) => ({
     ...c,
@@ -58,19 +71,23 @@ export default async function CaptureInboxPage() {
         <div>
           <h1>Capture inbox</h1>
           <p>
-            {needsChecking > 0
+            {view === 'archive'
+              ? 'Invoices already dealt with. The original document stays attached to whatever it became.'
+              : needsChecking > 0
               ? `${needsChecking} document${needsChecking === 1 ? '' : 's'} read and waiting for you to check.`
-              : 'Invoices you have uploaded, and what has happened to them.'}
+              : 'Invoices waiting to be read or checked.'}
           </p>
         </div>
         <Link href="/capture/new" className="btn btn-primary">Upload invoices</Link>
       </div>
 
-      <QueueRunner
-        orgId={org.id}
-        waiting={queue?.waiting || 0}
-        reading={queue?.reading || 0}
-      />
+      {view === 'open' && (
+        <QueueRunner
+          orgId={org.id}
+          waiting={queue?.waiting || 0}
+          reading={queue?.reading || 0}
+        />
+      )}
 
       {currentProvider() === 'stub' && (
         <div className="notice notice-caution">
@@ -81,16 +98,50 @@ export default async function CaptureInboxPage() {
       )}
 
       <div className="card">
+        <div className="card-head">
+          <div className="btn-row">
+            <Link
+              href="/capture"
+              className={`btn btn-sm ${view === 'open' ? 'btn-primary' : 'btn-ghost'}`}
+            >
+              To deal with{Number(counts?.open) ? ` (${counts.open})` : ''}
+            </Link>
+            <Link
+              href="/capture?view=archive"
+              className={`btn btn-sm ${view === 'archive' ? 'btn-primary' : 'btn-ghost'}`}
+            >
+              Archive{Number(counts?.archived) ? ` (${counts.archived})` : ''}
+            </Link>
+          </div>
+          {view === 'archive' && (
+            <span className="hint">
+              {counts?.posted || 0} posted, {counts?.discarded || 0} discarded
+            </span>
+          )}
+        </div>
+
         {rows.length === 0 ? (
           <div className="empty">
-            <h3>Nothing captured yet</h3>
-            <p>
-              Upload a supplier invoice as a PDF or a photo. It gets read, you
-              check it, and it posts as a bill with the original attached.
-            </p>
-            <Link href="/capture/new" className="btn btn-primary mt-md">
-              Upload an invoice
-            </Link>
+            {view === 'archive' ? (
+              <>
+                <h3>Nothing in the archive</h3>
+                <p>
+                  Invoices you have posted or discarded end up here, with the
+                  original document kept alongside.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3>Nothing to deal with</h3>
+                <p>
+                  Upload a supplier invoice as a PDF or a photo. It gets read, you
+                  check it, and it posts as a bill with the original attached.
+                </p>
+                <Link href="/capture/new" className="btn btn-primary mt-md">
+                  Upload an invoice
+                </Link>
+              </>
+            )}
           </div>
         ) : (
           <table className="table table-flush">

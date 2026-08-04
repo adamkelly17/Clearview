@@ -10,6 +10,10 @@ export const dynamic = 'force-dynamic';
 export default async function CaptureReviewPage({ params }) {
   const { supabase, org, features } = await requireOrg();
 
+  // In case this page is opened straight from a link rather than via the
+  // inbox, which is where the sweep usually happens.
+  await supabase.rpc('rematch_pending_extractions', { p_organisation_id: org.id });
+
   const { data: capture } = await supabase
     .from('capture_document')
     .select('*')

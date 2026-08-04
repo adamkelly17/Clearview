@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { money, readableError, shortDate } from '@/lib/format';
 import QuickContactModal from '@/components/QuickContactModal';
+import AccountPicker from '@/components/AccountPicker';
 
 /**
  * The review screen.
@@ -121,16 +122,6 @@ export default function ReviewForm({
   const [newSuppliers, setNewSuppliers] = useState([]);
   const allSuppliers = [...suppliers, ...newSuppliers];
 
-  const grouped = useMemo(() => {
-    const groups = new Map();
-    for (const a of accounts) {
-      const g = a.account_type?.report_group || 'Other';
-      if (!groups.has(g)) groups.set(g, []);
-      groups.get(g).push(a);
-    }
-    return [...groups.entries()];
-  }, [accounts]);
-
   const totals = useMemo(() => {
     let net = 0;
     let vat = 0;
@@ -231,6 +222,9 @@ export default function ReviewForm({
           setNewSuppliers((list) => [...list, { id, name, code: null }]);
           setContactId(id);
           setAddingContact(false);
+          // Refreshing runs rematch_pending_extractions() again, so every
+          // other invoice waiting from this supplier is matched too rather
+          // than each one offering to add them a second time.
           router.refresh();
         }}
         orgId={capture.organisation_id}
@@ -437,22 +431,12 @@ export default function ReviewForm({
                       />
                     </td>
                     <td>
-                      <select
-                        className="select"
+                      <AccountPicker
+                        accounts={accounts}
                         value={l.account_id}
-                        onChange={(e) => update(l.key, { account_id: e.target.value })}
-                      >
-                        <option value="">Choose…</option>
-                        {grouped.map(([group, items]) => (
-                          <optgroup key={group} label={group}>
-                            {items.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {pro ? `${a.code} — ${a.name}` : a.friendly_name || a.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                        onChange={(id) => update(l.key, { account_id: id })}
+                        pro={pro}
+                      />
                     </td>
                     {vatEnabled && (
                       <td>
