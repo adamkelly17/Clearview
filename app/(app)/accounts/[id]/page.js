@@ -69,6 +69,11 @@ export default async function AccountActivityPage({ params, searchParams }) {
         </div>
         <div className="btn-row">
           <Link href="/accounts" className="btn btn-secondary">All categories</Link>
+          {!account.is_system && (
+            <Link href={`/accounts/${params.id}/edit`} className="btn btn-secondary">
+              Edit
+            </Link>
+          )}
           <form className="row" style={{ gap: '0.5rem' }}>
             <input className="input" type="date" name="from" defaultValue={from} style={{ width: 'auto' }} />
             <input className="input" type="date" name="to" defaultValue={to} style={{ width: 'auto' }} />

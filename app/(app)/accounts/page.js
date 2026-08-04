@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
+import ActionsMenu from '@/components/ActionsMenu';
 import { requireOrg } from '@/lib/org';
 import Money from '@/components/Money';
 
@@ -39,10 +40,13 @@ export default async function AccountsPage() {
           <h1>{pro ? 'Chart of accounts' : 'Categories'}</h1>
           <p>
             {pro
-              ? 'The nominal ledger. Accounts marked as system accounts are maintained automatically and cannot be posted to by hand.'
+              ? 'The nominal ledger. Accounts marked automatic are maintained by the system and cannot be posted to by hand.'
               : 'Every transaction is filed into one of these. The ones marked automatic look after themselves.'}
           </p>
         </div>
+        <Link href="/accounts/new" className="btn btn-primary">
+          Add a {pro ? 'nominal account' : 'category'}
+        </Link>
       </div>
 
       <div className="card">
@@ -83,9 +87,14 @@ export default async function AccountsPage() {
                       </td>
                       <td><Money value={bal} blankZero /></td>
                       <td className="actions">
-                        <Link href={`/accounts/${a.id}`} className="btn btn-open btn-sm">
-                          Open
-                        </Link>
+                        <ActionsMenu
+                          items={[
+                            { href: `/accounts/${a.id}`, label: 'See what is in it' },
+                            ...(a.is_system
+                              ? []
+                              : [{ href: `/accounts/${a.id}/edit`, label: 'Edit' }]),
+                          ]}
+                        />
                       </td>
                     </tr>
                   );
@@ -97,8 +106,10 @@ export default async function AccountsPage() {
       </div>
 
       <p className="hint mt-md">
-        Adding and editing accounts arrives with the next phase. The list above
-        is the standard UK layout, adjusted for a {org.entity_type?.name?.toLowerCase() || 'business'}.
+        The list started as the standard UK layout, adjusted for a{' '}
+        {org.entity_type?.name?.toLowerCase() || 'business'}. Add your own where
+        you need them — the code is suggested from the usual range so the
+        numbering stays recognisable.
       </p>
     </div>
   );

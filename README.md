@@ -59,6 +59,7 @@ supabase/migrations/0021_overview.sql
 supabase/migrations/0022_contact_reports.sql
 supabase/migrations/0023_capture_queue.sql
 supabase/migrations/0024_negative_lines.sql
+supabase/migrations/0025_manage_accounts.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -130,6 +131,7 @@ psql -d ledgertest -f supabase/test/06_edit_test.sql
 psql -d ledgertest -f supabase/test/07_year_end_test.sql
 psql -d ledgertest -f supabase/test/08_undo_reallocate_test.sql
 psql -d ledgertest -f supabase/test/09_overview_test.sql
+psql -d ledgertest -f supabase/test/10_accounts_test.sql
 ```
 
 A hundred and forty-one assertions across the six files. Each is independent — they can
@@ -205,6 +207,37 @@ written to by a module, and system accounts cannot be renamed or
 deactivated.
 
 ---
+
+## Adding your own categories
+
+The chart of accounts can be added to, renamed, reclassified and pruned.
+Three things there needed care.
+
+**Codes.** A UK bookkeeper expects the code to say what an account is
+before they read its name — 4xxx is income, 7xxx an overhead. Each account
+type carries its conventional range in `account_type`, and a new account is
+offered the first free code inside it, gaps included so a deleted code
+comes back round. Offered, not imposed: anyone arriving from another system
+has their own scheme and being told what their codes must be is
+infuriating.
+
+**Reclassifying.** Deciding that van hire is cost of sales rather than an
+overhead is an ordinary judgement, and allowed — the profit and loss simply
+follows it, and gross profit changes accordingly. Moving an account between
+*classes* is not ordinary: an expense is not an asset, and pretending
+otherwise silently restates every period it has appeared in. So a group
+change is allowed and a class change is refused once the account has been
+used. Move the balance with a journal instead.
+
+**Removing.** Only ever for an account nothing points at — no
+transactions, no document lines, no contact defaulting to it, no bank rule
+coding to it. That is precisely the case worth having: the code created by
+mistake two minutes ago. Everything else is switched off instead, which
+keeps the history, takes it out of the pickers, and leaves it on the trial
+balance for as long as it carries a balance.
+
+Control accounts cannot be created by hand at all, and system accounts
+cannot be renumbered or reclassified.
 
 ## Configuration model
 
