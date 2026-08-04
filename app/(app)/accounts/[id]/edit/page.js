@@ -19,7 +19,7 @@ export default async function EditAccountPage({ params }) {
 
   if (!account) notFound();
 
-  const [{ types, vatCodes }, { data: usage }] = await Promise.all([
+  const [{ types, existing, vatCodes }, { data: usage }] = await Promise.all([
     loadAccountLookups(supabase, org.id, features.vat_enabled),
     supabase.rpc('account_usage', { p_account_id: params.id }),
   ]);
@@ -46,6 +46,7 @@ export default async function EditAccountPage({ params }) {
       <AccountForm
         orgId={org.id}
         types={types}
+        existing={existing}
         vatCodes={vatCodes}
         pro={pro}
         currencyCode={org.base_currency_code}

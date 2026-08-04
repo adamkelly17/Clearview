@@ -55,9 +55,15 @@ export async function POST(request) {
     );
   }
 
+  /* Stamped so reclaim_stuck_captures() can tell a document that is
+     genuinely being read from one whose browser tab was closed. */
   await supabase
     .from('capture_document')
-    .update({ status: 'extracting', status_detail: null })
+    .update({
+      status: 'extracting',
+      status_detail: null,
+      extraction_started_at: new Date().toISOString(),
+    })
     .eq('id', captureId);
 
   try {
@@ -157,6 +163,7 @@ export async function POST(request) {
       .update({
         status: 'failed',
         status_detail: String(error.message || error).slice(0, 500),
+        extraction_started_at: null,
       })
       .eq('id', captureId);
 

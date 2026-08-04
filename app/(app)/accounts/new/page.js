@@ -7,7 +7,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function NewAccountPage() {
   const { supabase, org, features } = await requireOrg();
-  const { types, vatCodes } = await loadAccountLookups(supabase, org.id, features.vat_enabled);
+  const { types, existing, vatCodes } = await loadAccountLookups(
+    supabase, org.id, features.vat_enabled
+  );
   const pro = features.accountant_mode;
 
   return (
@@ -26,6 +28,7 @@ export default async function NewAccountPage() {
       <AccountForm
         orgId={org.id}
         types={types}
+        existing={existing}
         vatCodes={vatCodes}
         pro={pro}
         currencyCode={org.base_currency_code}

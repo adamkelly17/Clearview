@@ -25,16 +25,16 @@
   --muted:        #737F93;
   --faint:        #A0A9B8;
 
-  /* Sampled from the logo: navy #012877, cyan #02BFD5, mid blue
-     #006DBF. Navy does the structural work; cyan is reserved for
-     focus and selection so it stays as sharp as the tick in the mark. */
-  --accent:       #012877;
-  --accent-hover: #011B57;
-  --accent-wash:  #E8EDF8;
-  --accent-mid:   #006DBF;
+  /* Sampled from the logo: navy #001D5C, cyan #00A0C4. Navy does the
+     structural work; cyan is held back for focus and selection so it
+     stays as sharp as the lit blade in the aperture. */
+  --accent:       #001D5C;
+  --accent-hover: #001343;
+  --accent-wash:  #E6EAF3;
+  --accent-mid:   #0B5285;
 
-  --highlight:      #02BFD5;
-  --highlight-wash: #E1F7FA;
+  --highlight:      #00A0C4;
+  --highlight-wash: #E1F2F7;
 
   /* Money keeps its own conventions. Green for gains, red for losses —
      cooled slightly so they belong beside the navy. */
@@ -47,9 +47,9 @@
   --radius:       6px;
   --radius-lg:    10px;
 
-  --shadow-sm: 0 1px 2px rgba(1, 40, 119, 0.06);
-  --shadow-md: 0 4px 16px rgba(1, 40, 119, 0.09);
-  --shadow-lg: 0 12px 40px rgba(1, 40, 119, 0.14);
+  --shadow-sm: 0 1px 2px rgba(0, 29, 92, 0.07);
+  --shadow-md: 0 4px 16px rgba(0, 29, 92, 0.10);
+  --shadow-lg: 0 12px 40px rgba(0, 29, 92, 0.15);
 
   --sidebar-width: 232px;
 }
@@ -451,7 +451,7 @@ a:hover {
 
 .notice-error   { background: var(--negative-wash); border-color: #E9C4BC; color: #7C2D20; }
 .notice-caution { background: var(--caution-wash);  border-color: #E8D5AE; color: #7A4E0F; }
-.notice-info    { background: var(--accent-wash);   border-color: #C3D2EC; color: #01245F; }
+.notice-info    { background: var(--accent-wash);   border-color: #C0CCE3; color: #001A52; }
 
 .pill {
   display: inline-block;
@@ -470,7 +470,7 @@ a:hover {
 .recon-suggestion .pill { white-space: normal; }
 
 .pill-accent   { background: var(--accent-wash);   color: var(--accent); }
-.pill-highlight{ background: var(--highlight-wash); color: #046A78; }
+.pill-highlight{ background: var(--highlight-wash); color: #045E75; }
 .pill-caution  { background: var(--caution-wash);  color: var(--caution); }
 .pill-negative { background: var(--negative-wash); color: var(--negative); }
 
@@ -1047,3 +1047,278 @@ a:hover {
 .alloc-table td:first-child { padding-left: 0; }
 .alloc-table td:last-child { padding-right: 0; text-align: right; }
 .alloc-table input.num { text-align: right; }
+
+/* --- Profit and loss strip on the overview ------------------------- */
+
+.pl-table td { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+
+.pl-table td:nth-child(2) {
+  text-align: right;
+  width: 9rem;
+}
+
+.pl-pct {
+  width: 4.5rem;
+  text-align: right;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+}
+
+/* Gross profit is a subtotal, not just another row. */
+.pl-subtotal td {
+  border-top: 1px solid var(--line-strong);
+  font-weight: 600;
+}
+
+.pl-subtotal .pl-pct { color: var(--accent); font-weight: 600; }
+
+.insight {
+  border-top: 1px solid var(--line);
+  background: var(--accent-wash);
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+/* --- Sortable headings --------------------------------------------- */
+
+.table th.sortable { padding: 0; }
+
+.sort-link {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.625rem 0.75rem;
+  color: var(--muted);
+  text-decoration: none;
+  font: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  font-weight: inherit;
+}
+
+.table th.num .sort-link { justify-content: flex-end; }
+.sort-link:hover { color: var(--accent); text-decoration: none; background: var(--surface-sunk); }
+
+.sort-arrow { color: var(--faint); font-size: 0.75rem; }
+.sort-arrow-on { color: var(--accent); }
+
+/* --- Row actions menu ---------------------------------------------- */
+
+.actions-menu { position: relative; display: inline-block; }
+
+.actions-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 30;
+  min-width: 14rem;
+  padding: 0.3125rem;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+}
+
+.actions-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4375rem 0.625rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.actions-item:hover {
+  background: var(--accent-wash);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.actions-hint { font-size: 0.75rem; color: var(--muted); }
+
+.actions-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 0.3125rem 0.25rem;
+}
+
+.headline {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+  text-align: left;
+}
+
+/* =====================================================================
+   Modal
+   ---------------------------------------------------------------------
+   Used where leaving the page would lose work — adding a supplier part
+   way through checking an invoice, for instance.
+   ===================================================================== */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 29, 92, 0.32);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3rem 1.25rem;
+  overflow-y: auto;
+  animation: modal-fade 120ms ease;
+}
+
+.modal {
+  width: 100%;
+  max-width: 42rem;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: modal-rise 140ms ease;
+}
+
+@keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-rise {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.125rem 1.375rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-body { padding: 1.25rem 1.375rem; }
+
+.modal-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 1rem 1.375rem;
+  border-top: 1px solid var(--line);
+  background: var(--surface-sunk);
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.375rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.125rem 0.4375rem;
+  border-radius: var(--radius);
+}
+
+.modal-close:hover { background: var(--surface-sunk); color: var(--ink); }
+
+@media (max-width: 620px) {
+  .modal-backdrop { padding: 1rem 0.75rem; }
+  .modal-foot { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop, .modal { animation: none; }
+}
+
+/* A button that has to read as a link, for inline actions in prose. */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.link-button:hover { text-decoration-color: var(--accent); color: var(--accent-hover); }
+
+/* --- Which codes are already in use -------------------------------- */
+
+.code-map {
+  margin-top: 0.25rem;
+  padding: 0.875rem 1rem;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.code-map-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.625rem;
+}
+
+.code-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.125rem 1.25rem;
+  max-height: 11rem;
+  overflow-y: auto;
+}
+
+.code-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  padding: 0.125rem 0;
+  min-width: 0;
+}
+
+.code-name {
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-name .pill { margin-left: 0.3125rem; font-size: 0.625rem; padding: 0.0625rem 0.375rem; }
+
+/* The row the typed code collides with, so the clash is visible in the
+   list as well as stated under the field. */
+.code-list-clash {
+  background: var(--negative-wash);
+  border-radius: var(--radius);
+  padding-left: 0.375rem !important;
+  padding-right: 0.375rem !important;
+}
+
+.code-list-clash .code, .code-list-clash .code-name { color: var(--negative); font-weight: 600; }
+
+.code-chip {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.code-chip:hover { border-color: var(--accent); background: var(--accent-wash); }

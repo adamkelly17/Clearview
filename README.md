@@ -221,6 +221,17 @@ comes back round. Offered, not imposed: anyone arriving from another system
 has their own scheme and being told what their codes must be is
 infuriating.
 
+The form shows **what is already in that range**, because picking a code
+blind is guesswork. Adding van hire to a chart that has vehicle repairs at
+7301 and vehicle insurance at 7303 should obviously take 7302, and that is
+only obvious if the neighbours are on screen. A handful of free codes are
+offered as one click each, and a clash is flagged as it is typed —
+naming what already holds the code — rather than on submit.
+
+When accountant mode is off the code field is hidden altogether and one is
+assigned quietly. Asking a non-accountant for a nominal code, on a screen
+that does not otherwise show them, was the wrong question.
+
 **Reclassifying.** Deciding that van hire is cost of sales rather than an
 overhead is an ordinary judgement, and allowed — the profit and loss simply
 follows it, and gross profit changes accordingly. Moving an account between
