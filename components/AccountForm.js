@@ -19,7 +19,8 @@ import { money, readableError, shortDate } from '@/lib/format';
  * created two minutes ago.
  */
 export default function AccountForm({
-  orgId, types, vatCodes, pro, currencyCode, editing = null, usage = null,
+  orgId, types, existing = [], vatCodes, pro, currencyCode,
+  editing = null, usage = null,
 }) {
   const router = useRouter();
   const isEdit = Boolean(editing);
@@ -34,7 +35,6 @@ export default function AccountForm({
     active: editing?.active ?? true,
   });
 
-  const [suggested, setSuggested] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -46,10 +46,54 @@ export default function AccountForm({
     [types, form.account_type_code]
   );
 
-  /* Ask for a code whenever the kind changes. On a new account it fills
-     the field; on an existing one it is only shown as a hint, because
-     renumbering a live account is a decision, not a default. */
+  /* Everything already sitting in the range for the chosen kind, so a code
+     can be picked with its neighbours in view. Choosing 7302 because the
+     other vehicle costs are at 7300–7304 is the whole point of a coded
+     chart, and impossible to do blind. */
+  const inRange = useMemo(() => {
+    if (!chosen?.code_range_start) return [];
+
+    const start = chosen.code_range_start;
+    const end = chosen.code_range_end;
+
+    return existing
+      .filter((a) => {
+        const n = Number(a.code);
+        return Number.isFinite(n) && n >= start && n <= end;
+      })
+      .sort((a, b) => Number(a.code) - Number(b.code));
+  }, [existing, chosen]);
+
+  /* The first handful of free codes in the range, offered as one click
+     each. More than a handful is noise. */
+  const freeCodes = useMemo(() => {
+    if (!chosen?.code_range_start) return [];
+
+    const taken = new Set(existing.map((a) => a.code));
+    const out = [];
+
+    for (let n = chosen.code_range_start; n <= chosen.code_range_end && out.length < 8; n += 1) {
+      const code = String(n).padStart(4, '0');
+      if (!taken.has(code)) out.push(code);
+    }
+    return out;
+  }, [existing, chosen]);
+
+  /* Live clash check, so a duplicate is caught while typing rather than on
+     submit. The account being edited does not clash with itself. */
+  const clash = useMemo(() => {
+    const code = form.code.trim();
+    if (!code) return null;
+    return existing.find((a) => a.code === code && a.id !== editing?.id) || null;
+  }, [existing, form.code, editing]);
+
+  /* Fill in a code whenever the kind changes, but only on a new account
+     and only where codes are on show. Renumbering a live account is a
+     decision rather than a default, and with accountant mode off the
+     database assigns one on save — see assign_account_code(). */
   useEffect(() => {
+    if (!pro || isEdit) return undefined;
+
     let cancelled = false;
 
     createClient()
@@ -58,19 +102,21 @@ export default function AccountForm({
         p_account_type_code: form.account_type_code,
       })
       .then(({ data }) => {
-        if (cancelled) return;
-        setSuggested(data || null);
-        if (!isEdit && data) setForm((f) => ({ ...f, code: data }));
+        if (!cancelled && data) setForm((f) => ({ ...f, code: data }));
       });
 
     return () => { cancelled = true; };
-  }, [form.account_type_code, orgId, isEdit]);
+  }, [form.account_type_code, orgId, isEdit, pro]);
 
   const used = Number(usage?.transactions || 0) > 0;
   const classChanged =
     isEdit && chosen && editing.class && chosen.class !== editing.class;
 
-  const ready = form.name.trim() && form.account_type_code && form.code.trim();
+  const ready =
+    form.name.trim()
+    && form.account_type_code
+    && (!pro || form.code.trim())
+    && !clash;
 
   async function save() {
     setBusy(true);
@@ -83,7 +129,9 @@ export default function AccountForm({
       friendly_name: form.friendly_name.trim() || null,
       description: form.description.trim() || null,
       account_type_code: form.account_type_code,
-      code: form.code.trim(),
+      // Omitted entirely when codes are hidden, so the database assigns
+      // one atomically rather than the browser guessing.
+      ...(pro || isEdit ? { code: form.code.trim() } : {}),
       default_vat_code_id: form.default_vat_code_id || null,
       active: form.active,
     };
@@ -187,7 +235,7 @@ export default function AccountForm({
             </label>
           </div>
 
-          <div className="grid grid-2">
+          <div className={pro ? 'grid grid-2' : ''}>
             <label className="field">
               <span className="label">What kind of category</span>
               <select
@@ -214,37 +262,82 @@ export default function AccountForm({
               )}
             </label>
 
-            <label className="field">
-              <span className="label">Code</span>
-              <input
-                className="input code"
-                value={form.code}
-                onChange={(e) => set({ code: e.target.value })}
-                disabled={isEdit && editing.is_system}
-              />
-              <span className="hint" style={{ display: 'block', marginTop: '0.3125rem' }}>
-                {chosen?.range_hint ? (
-                  <>
-                    {chosen.range_hint} is the usual range for this kind.
-                    {suggested && suggested !== form.code && (
-                      <>
-                        {' '}
+            {pro ? (
+              <label className="field">
+                <span className="label">Code</span>
+                <input
+                  className="input code"
+                  value={form.code}
+                  onChange={(e) => set({ code: e.target.value })}
+                  disabled={isEdit && editing.is_system}
+                  aria-invalid={Boolean(clash)}
+                />
+                {clash ? (
+                  <span
+                    className="hint"
+                    style={{ display: 'block', marginTop: '0.3125rem', color: 'var(--negative)' }}
+                  >
+                    {clash.code} is already <strong>{clash.name}</strong>. Pick another.
+                  </span>
+                ) : (
+                  <span className="hint" style={{ display: 'block', marginTop: '0.3125rem' }}>
+                    {chosen?.range_hint
+                      ? `${chosen.range_hint} is the usual range for this kind.`
+                      : 'Any code not already in use.'}
+                  </span>
+                )}
+              </label>
+            ) : null}
+          </div>
+
+          {pro && chosen?.code_range_start && (
+            <div className="code-map">
+              <div className="code-map-head">
+                <span className="eyebrow">
+                  Already in {chosen.range_hint}
+                </span>
+                {freeCodes.length > 0 && (
+                  <span className="hint">
+                    Free:{' '}
+                    {freeCodes.map((c, i) => (
+                      <span key={c}>
+                        {i > 0 && ' '}
                         <button
                           type="button"
-                          className="link-button"
-                          onClick={() => set({ code: suggested })}
+                          className="code-chip"
+                          onClick={() => set({ code: c })}
                         >
-                          Use {suggested}
+                          {c}
                         </button>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  'Any code not already in use.'
+                      </span>
+                    ))}
+                  </span>
                 )}
-              </span>
-            </label>
-          </div>
+              </div>
+
+              {inRange.length === 0 ? (
+                <p className="hint" style={{ margin: 0 }}>
+                  Nothing in this range yet.
+                </p>
+              ) : (
+                <ul className="code-list">
+                  {inRange.map((a) => (
+                    <li
+                      key={a.id}
+                      className={a.code === form.code.trim() ? 'code-list-clash' : undefined}
+                    >
+                      <span className="code">{a.code}</span>
+                      <span className="code-name">
+                        {a.name}
+                        {a.is_system && <span className="pill">auto</span>}
+                        {!a.active && <span className="pill">off</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           {classChanged && (
             <div className="notice notice-error">
@@ -381,7 +474,11 @@ export default function AccountForm({
 
       {!ready && (
         <p className="hint mt-md">
-          {!form.name.trim() ? 'Give it a name to continue.' : 'A code is needed.'}
+          {!form.name.trim()
+            ? 'Give it a name to continue.'
+            : clash
+            ? `Code ${clash.code} is already taken by ${clash.name}.`
+            : 'A code is needed.'}
         </p>
       )}
     </>

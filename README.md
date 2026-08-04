@@ -60,6 +60,7 @@ supabase/migrations/0022_contact_reports.sql
 supabase/migrations/0023_capture_queue.sql
 supabase/migrations/0024_negative_lines.sql
 supabase/migrations/0025_manage_accounts.sql
+supabase/migrations/0026_assign_account_code.sql
 ```
 
 Order matters. `0003` depends on the helper functions in `0001`, `0006`
@@ -228,9 +229,18 @@ only obvious if the neighbours are on screen. A handful of free codes are
 offered as one click each, and a clash is flagged as it is typed —
 naming what already holds the code — rather than on submit.
 
-When accountant mode is off the code field is hidden altogether and one is
-assigned quietly. Asking a non-accountant for a nominal code, on a screen
-that does not otherwise show them, was the wrong question.
+When accountant mode is off the form does not mention a code at all — not
+as a field, not as a note. Asking a non-accountant for a nominal code, on a
+screen that never shows them one, was the wrong question; telling them what
+it was going to be was the same question in a quieter voice.
+
+`assign_account_code()` does it on save instead, which also closes a race
+the browser could not: two people adding a category at the same moment
+would both have been offered 7002 and the second insert would have failed.
+It never gives up either — the conventional range first, then the wider
+thousand, then anywhere — because a dead end is unacceptable when nobody
+has been asked to choose. `suggest_account_code()` still returns nothing
+when the range is full, which is correct when a person *is* being asked.
 
 **Reclassifying.** Deciding that van hire is cost of sales rather than an
 overhead is an ordinary judgement, and allowed — the profit and loss simply

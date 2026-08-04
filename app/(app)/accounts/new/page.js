@@ -18,8 +18,9 @@ export default async function NewAccountPage() {
         <div>
           <h1>Add a {pro ? 'nominal account' : 'category'}</h1>
           <p>
-            Somewhere new to file income or costs. The code is suggested from the
-            usual range for whatever kind you pick, and you can change it.
+            {pro
+              ? 'Somewhere new to file income or costs. The code is suggested from the usual range for whatever kind you pick, and you can change it.'
+              : 'Somewhere new to file income or costs. Give it a name and say what kind of thing it is.'}
           </p>
         </div>
         <Link href="/accounts" className="btn btn-secondary">Cancel</Link>
