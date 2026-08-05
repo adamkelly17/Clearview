@@ -59,7 +59,7 @@ export default function UndoButton({ lineId, createdSomething }) {
       </div>
       <p className="hint" style={{ marginBottom: '0.75rem' }}>
         {createdSomething
-          ? 'The transaction this created will be reversed. Both entries stay in the audit trail.'
+          ? 'The transaction this created will be reversed on the same date, so the month is left as it was. Both entries stay in the audit trail but neither counts as waiting to be reconciled.'
           : 'The transaction it was matched to is left alone — only the link is broken.'}
       </p>
       <div className="btn-row">
